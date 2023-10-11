@@ -127,7 +127,7 @@ func runCmdFunc(cmd *cobra.Command, args []string) error {
 				return err
 			}
 
-			utils.Outf("{{green}}deploy transaction successful: {{/}} %v\n", programID.String())
+			utils.Outf("{{green}}deploy transaction successful: {{/}} %v\n\n", programID.String())
 		case "call":
 			utils.Outf("{{yellow}}max fee:{{/}} %v\n", action.MaxFee)
 			resp, id, err := callProgram(context.Background(), &action, &p.Config)
@@ -135,7 +135,7 @@ func runCmdFunc(cmd *cobra.Command, args []string) error {
 				return err
 			}
 			utils.Outf("{{green}}call transaction successful: {{/}} %s\n", id.String())
-			utils.Outf("{{blue}}response: {{/}}%d\n", resp)
+			utils.Outf("{{blue}}response: {{/}}%d\n\n", resp)
 		default:
 			return fmt.Errorf("%w: %s", ErrInvalidAction, action.Name)
 		}

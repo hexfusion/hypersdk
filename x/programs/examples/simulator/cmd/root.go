@@ -51,12 +51,12 @@ func init() {
 		}
 
 		log = logging.NewLogger(
-		"",
-		logging.NewWrappedCore(
-			logging.Info,
-			os.Stderr,
-			logging.Plain.ConsoleEncoder(),
-		))
+			"",
+			logging.NewWrappedCore(
+				logging.Info,
+				os.Stderr,
+				logging.Plain.ConsoleEncoder(),
+			))
 
 		utils.Outf("{{yellow}}database:{{/}} %s\n", dbPath)
 		return nil

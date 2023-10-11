@@ -13,7 +13,6 @@ import (
 	"github.com/ava-labs/hypersdk/x/programs/examples/imports/program"
 	"github.com/ava-labs/hypersdk/x/programs/examples/imports/pstate"
 	"github.com/ava-labs/hypersdk/x/programs/runtime"
-	"github.com/ava-labs/hypersdk/x/programs/utils"
 )
 
 //go:embed testdata/counter.wasm
@@ -22,7 +21,7 @@ var counterProgramBytes []byte
 // go test -v -timeout 30s -run ^TestCounterProgram$ github.com/ava-labs/hypersdk/x/programs/examples
 func TestCounterProgram(t *testing.T) {
 	require := require.New(t)
-	db := utils.NewTestDB()
+	db := newTestDB()
 	maxUnits := uint64(50000)
 
 	// define supported imports

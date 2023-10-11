@@ -21,6 +21,8 @@ import (
 
 const Name = "program"
 
+var _ runtime.Import = &Import{}
+
 type Import struct {
 	db         state.Mutable
 	log        logging.Logger

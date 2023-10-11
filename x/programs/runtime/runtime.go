@@ -82,6 +82,18 @@ func (r *WasmRuntime) Initialize(ctx context.Context, programBytes []byte) (err 
 	}
 
 	link := Link{wasmtime.NewLinker(r.store.Engine)}
+
+	if r.cfg.testingOnlyMode {
+		// setup wasi for debugging
+		wasiConfig := wasmtime.NewWasiConfig()
+		wasiConfig.InheritStderr()
+		wasiConfig.InheritStdout()
+		r.store.SetWasi(wasiConfig)
+		err = link.DefineWasi()
+		if err != nil {
+			return err
+		}
+	}
 	// setup metering
 	r.meter = NewMeter(r.store)
 	_, err = r.meter.AddUnits(r.cfg.meterMaxUnits)

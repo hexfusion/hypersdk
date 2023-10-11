@@ -1,0 +1,17 @@
+program:
+  name: token program
+  description: Deploy and execute token program
+  caller_key: path/to/key 
+actions:
+  - name: deploy
+    description: deploy a new token program
+    path: path/to/program
+    max_gas: 100000
+  - name: call
+    description: init
+    function: init
+    id: inherit // inherit id created from deploy
+    max_gas: 100000
+runtime:
+  config:
+    - max_memory_pages: 18

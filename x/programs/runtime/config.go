@@ -46,6 +46,8 @@ type builder struct {
 	defaultCache    bool
 	meterMaxUnits   uint64
 
+	testingOnlyMode bool
+
 	// limit
 	limitMaxMemory int64
 }
@@ -60,6 +62,8 @@ type Config struct {
 	// number of instances of this module can be instantiated in parallel
 	limitMaxInstances int64
 	limitMaxMemories  int64
+
+	testingOnlyMode bool
 
 	compileStrategy EngineCompileStrategy
 	meterMaxUnits   uint64
@@ -133,8 +137,8 @@ func (b *builder) WithProfilingStrategy(strategy wasmtime.ProfilingStrategy) *bu
 // Each page represents 64KiB of memory.
 //
 // Default is 16 pages.
-func (b *builder) WithLimitMaxMemory(max int64) *builder {
-	b.limitMaxMemory = max
+func (b *builder) WithLimitMaxMemory(max uint64) *builder {
+	b.limitMaxMemory = int64(max)
 	return b
 }
 
@@ -143,6 +147,18 @@ func (b *builder) WithLimitMaxMemory(max int64) *builder {
 // Default is false.
 func (b *builder) WithDefaultCache(enabled bool) *builder {
 	b.defaultCache = enabled
+	return b
+}
+
+// WithEnableTestingOnlyMode enables test mode which provides access to
+// useful debugging information. This should not be set for a live
+// system as it has both performance and security considerations.
+//
+// Note: This requires Rust programs to be compiled with the  Wasm to be compiled with the
+//
+// Default is false.
+func (b *builder) WithEnableTestingOnlyMode(enabled bool) *builder {
+	b.testingOnlyMode = enabled
 	return b
 }
 

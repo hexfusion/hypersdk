@@ -43,6 +43,16 @@ func newKeyCmd() *cobra.Command {
 
 func newKeyFunc(cmd *cobra.Command, args []string) error {
 	name := args[0]
+	err := newKey(context.Background(), db, name)
+	if err != nil {
+		return err
+	}
+	utils.Outf("{{green}}created new private key:{{/}} %s\n", name)
+
+	return nil
+}
+
+func newKey(ctx context.Context, db *state.SimpleMutable, name string) error {
 	if name == "" {
 		return fmt.Errorf("%w: %s", ErrMissingArgument, "key name")
 	}
@@ -51,7 +61,7 @@ func newKeyFunc(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	_, ok, err := getPublicKey(context.Background(), db, name)
+	_, ok, err := getPublicKey(ctx, db, name)
 	if ok {
 		return fmt.Errorf("%w: %s", ErrDuplicateKeyName, name)
 	}
@@ -63,16 +73,10 @@ func newKeyFunc(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	err = db.Commit(context.Background())
-	if err != nil {
-		return err
-	}
-	utils.Outf("{{green}}created new private key:{{/}} %s\n", name)
-
-	return nil
+	return db.Commit(ctx)
 }
 
-// GetPublicKey gets the public key mapped to the given [keyHRP]
+// gets the public key mapped to the given name.
 func getPublicKey(ctx context.Context, db state.Immutable, name string) (ed25519.PublicKey, bool, error) {
 	k := make([]byte, 1+ed25519.PublicKeyLen)
 	k[0] = keyPrefix

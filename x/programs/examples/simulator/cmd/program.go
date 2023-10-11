@@ -75,15 +75,6 @@ func programCmd() *cobra.Command {
 		},
 	}
 
-	cmd.PersistentPreRunE = func(*cobra.Command, []string) (err error) {
-		db, err = getDB(dbPath)
-		if err != nil {
-			return err
-		}
-		utils.Outf("{{yellow}}database:{{/}} %s\n", dbPath)
-		return nil
-	}
-
 	// add subcommands
 	cmd.AddCommand(
 		runCmd(),

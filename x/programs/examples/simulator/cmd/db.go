@@ -25,16 +25,31 @@ var defaultDBConfig = merkledb.Config{
 	Tracer:                    trace.Noop,
 }
 
-func getDB(dbPath string) (*state.SimpleMutable, error) {
+type dBCloserFn func() error
+
+func getDB(ctx context.Context, dbPath string) (*state.SimpleMutable, dBCloserFn, error) {
 	pdb, _, err := pebble.New(dbPath, pebble.NewDefaultConfig())
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	stateDB, err := merkledb.New(context.Background(), pdb, defaultDBConfig)
+	stateDB, err := merkledb.New(ctx, pdb, defaultDBConfig)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return state.NewSimpleMutable(stateDB), nil
+	// ensure DBs are closed
+	closer := func() error {
+		err = stateDB.Close()
+		if err != nil {
+			return err
+		}
+		err = pdb.Close()
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	return state.NewSimpleMutable(stateDB), closer, nil
 }

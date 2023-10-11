@@ -154,7 +154,8 @@ func (b *builder) WithDefaultCache(enabled bool) *builder {
 // useful debugging information. This should not be set for a live
 // system as it has both performance and security considerations.
 //
-// Note: This requires Rust programs to be compiled with the  Wasm to be compiled with the
+// Note: This requires Rust programs to be compiled with the  Wasm to be
+// compiled with the wasm32-wasi target.
 //
 // Default is false.
 func (b *builder) WithEnableTestingOnlyMode(enabled bool) *builder {

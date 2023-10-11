@@ -4,6 +4,8 @@ package cmd
 // See the file LICENSE for licensing terms.
 
 import (
+	"context"
+
 	"github.com/spf13/cobra"
 
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -16,6 +18,7 @@ var (
 	defaultDBPath = "simulator.db"
 	dbPath        string
 	db            *state.SimpleMutable
+	dbCloser      dBCloserFn
 	log           logging.Logger
 	rootCmd       = &cobra.Command{
 		Use:   "simulator",
@@ -38,7 +41,7 @@ func init() {
 	)
 
 	rootCmd.PersistentPreRunE = func(*cobra.Command, []string) (err error) {
-		db, err = getDB(dbPath)
+		db, dbCloser, err = getDB(context.Background(), dbPath)
 		if err != nil {
 			return err
 		}
@@ -49,5 +52,12 @@ func init() {
 }
 
 func Execute() error {
+	defer func() {
+		err := dbCloser()
+		if err != nil {
+			utils.Outf("{{red}}database closed with error:{{/}} %s\n", err)
+		}
+	}()
+
 	return rootCmd.Execute()
 }

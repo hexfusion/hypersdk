@@ -5,6 +5,7 @@ package cmd
 
 import (
 	"context"
+	"os"
 
 	"github.com/spf13/cobra"
 
@@ -23,6 +24,9 @@ var (
 	rootCmd       = &cobra.Command{
 		Use:   "simulator",
 		Short: "HyperSDK Program simulator",
+		RunE: func(*cobra.Command, []string) error {
+			return ErrMissingSubcommand
+		},
 	}
 )
 
@@ -45,6 +49,14 @@ func init() {
 		if err != nil {
 			return err
 		}
+
+		log = logging.NewLogger(
+		"",
+		logging.NewWrappedCore(
+			logging.Info,
+			os.Stderr,
+			logging.Plain.ConsoleEncoder(),
+		))
 
 		utils.Outf("{{yellow}}database:{{/}} %s\n", dbPath)
 		return nil

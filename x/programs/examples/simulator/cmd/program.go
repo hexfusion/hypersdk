@@ -24,6 +24,10 @@ import (
 	"github.com/ava-labs/hypersdk/x/programs/runtime"
 )
 
+const (
+	inheritIDKey = "inherit"
+)
+
 var (
 	programID ids.ID
 )
@@ -84,8 +88,8 @@ func programCmd() *cobra.Command {
 
 func runCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "run",
-		Short: "Run a series of program actions",
+		Use:   "run [path]",
+		Short: "Run a series of program actions from config file",
 		RunE:  runCmdFunc,
 	}
 
@@ -93,7 +97,11 @@ func runCmd() *cobra.Command {
 }
 
 func runCmdFunc(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("%w: %s", ErrMissingArgument, "config file path")
+	}
 	configPath := args[0]
+
 	configBytes, err := os.ReadFile(configPath)
 	if err != nil {
 		return err
@@ -105,7 +113,7 @@ func runCmdFunc(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	utils.Outf("{{green}}simulating: {{/}} %v\n", p.Name)
+	utils.Outf("{{green}}simulating: {{/}}%s\n", p.Name)
 
 	for _, action := range p.Actions {
 		switch action.Name {
@@ -113,19 +121,21 @@ func runCmdFunc(cmd *cobra.Command, args []string) error {
 			if action.ProgramPath == "" {
 				return fmt.Errorf("%w: %s", ErrProgramPathRequired, action.Name)
 			}
-			id, err := deployProgram(context.Background(), &action)
+			var err error
+			programID, err = deployProgram(context.Background(), &action)
 			if err != nil {
 				return err
 			}
 
-			utils.Outf("{{green}}deploy transaction successful: {{/}} %v\n", id)
+			utils.Outf("{{green}}deploy transaction successful: {{/}} %v\n", programID.String())
 		case "call":
-			id, err := callProgram(context.Background(), &action, &p.Config)
+			utils.Outf("{{yellow}}max fee:{{/}} %v\n", action.MaxFee)
+			resp, id, err := callProgram(context.Background(), &action, &p.Config)
 			if err != nil {
 				return err
 			}
-
-			utils.Outf("{{green}}call transaction successful: {{/}} %v\n", id)
+			utils.Outf("{{green}}call transaction successful: {{/}} %s\n", id.String())
+			utils.Outf("{{blue}}response: {{/}}%d\n", resp)
 		default:
 			return fmt.Errorf("%w: %s", ErrInvalidAction, action.Name)
 		}
@@ -134,49 +144,57 @@ func runCmdFunc(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func deployProgram(ctx context.Context, action *Action) (string, error) {
+func deployProgram(ctx context.Context, action *Action) (ids.ID, error) {
 	programBytes, err := os.ReadFile(action.ProgramPath)
 	if err != nil {
-		return "", err
+		return ids.Empty, err
 	}
 	// simulate create program transaction
 	programID, err = generateRandomID()
 	if err != nil {
-		return "", err
+		return ids.Empty, err
 	}
 	// store the program to disk
 	err = storage.SetProgram(ctx, db, programID, programBytes)
 	if err != nil {
-		return "", err
+		return ids.Empty, err
 	}
 
-	return programID.String(), nil
+	return programID, nil
 }
 
-func callProgram(ctx context.Context, action *Action, config *Config) (string, error) {
-	programID, err := ids.ToID([]byte(action.ProgramID))
+func callProgram(ctx context.Context, action *Action, config *Config) (uint64, ids.ID, error) {
+	// get program ID from deploy action if set to inherit
+	var programIDBytes = make([]byte, 32)
+	if action.ProgramID == inheritIDKey {
+		copy(programIDBytes, programID[:])
+	} else {
+		copy(programIDBytes, []byte(action.ProgramID))
+	}
+
+	programID, err := ids.ToID(programIDBytes)
 	if err != nil {
-		return "", err
+		return 0, ids.Empty, err
 	}
 
 	// get program bytes from disk
 	programBytes, ok, err := storage.GetProgram(ctx, db, programID)
 	if !ok {
-		return "", fmt.Errorf("%w: %s", ErrProgramNotFound, programID)
+		return 0, ids.Empty, fmt.Errorf("%w: %s", ErrProgramNotFound, programID)
 	}
 	if err != nil {
-		return "", err
+		return 0, ids.Empty, err
 	}
 
 	// simulate call program transaction
 	callID, err := generateRandomID()
 	if err != nil {
-		return "", err
+		return 0, ids.Empty, err
 	}
 
 	cfg, err := newConfig(action, config)
 	if err != nil {
-		return "", err
+		return 0, ids.Empty, err
 	}
 
 	// TODO: handle custom imports
@@ -189,25 +207,30 @@ func callProgram(ctx context.Context, action *Action, config *Config) (string, e
 	})
 
 	rt := runtime.New(log, cfg, supported.Imports())
+	defer rt.Stop()
 	err = rt.Initialize(ctx, programBytes)
 	if err != nil {
-		return "", err
+		return 0, ids.Empty, err
 	}
 
 	// get function params
 	params, err := createParams(ctx, programID, rt.Memory(), db, action.Parameters)
 	if err != nil {
-		return "", err
+		return 0, ids.Empty, err
 	}
 
-	rt.Call(ctx, action.Function, params...)
+	resp, err := rt.Call(ctx, action.Function, params...)
+	if err != nil {
+		return 0, ids.Empty, err
+	}
 
 	// only commit to state if the call is successful
 	err = db.Commit(ctx)
 	if err != nil {
-		return "", err
+		return 0, ids.Empty, err
 	}
-	return callID.String(), nil
+	utils.Outf("{{yellow}}fee balance: {{/}}%d\n", rt.Meter().GetBalance())
+	return resp[0], callID, nil
 }
 
 func generateRandomID() (ids.ID, error) {

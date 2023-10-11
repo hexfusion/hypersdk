@@ -1,17 +1,18 @@
+# example of a token program
 program:
   name: token program
   description: Deploy and execute token program
-  caller_key: path/to/key 
+  caller_key: alice 
+  config:
+    max_memory_pages: 18
 actions:
   - name: deploy
     description: deploy a new token program
-    path: path/to/program
+    program_path: ./testdata/token.wasm
     max_gas: 100000
   - name: call
     description: init
     function: init
-    id: inherit // inherit id created from deploy
+    program_id: inherit #inherit id created from deploy
     max_gas: 100000
-runtime:
-  config:
-    - max_memory_pages: 18
+  

@@ -7,7 +7,7 @@ config:
 steps:
   - name: deploy
     description: deploy a new token program
-    program_path: ../testdata/token.wasm
+    program_path: ../../examples/testdata/token.wasm
     max_fee: 100000
   - name: call
     description: init
@@ -16,6 +16,8 @@ steps:
     max_fee: 100000
     require:
       result:
-        operator: "=="
+        operator: ">="
         operand: 1
-      want_error: false
+      balance:
+        operator: ">="
+        operand: 90000

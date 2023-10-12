@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -53,16 +54,18 @@ type Config struct {
 }
 
 type Step struct {
-	// Name of the action to perform. Valid values are: create, call.
+	// Name of the step to perform. Valid values are: create, call.
 	Name string `json,yaml:"name"`
-	// Description of the action.
+	// Description of the step.
 	Description string `json,yaml:"description"`
-	// Maximum fee to pay for the action.
+	// Maximum fee to pay for the step.
 	MaxFee uint64 `yaml:"max_fee" json:"maxFee"`
-	// Path to the program to deploy. Only used with deploy actions.
+	// Path to the program to deploy. Only used with deploy steps.
 	ProgramPath string `yaml:"program_path,omitempty" json:"programPath,omitempty"`
+	// Name of the key to create program. Only used with create_key steps.
+	KeyName string `yaml:"key_name,omitempty" json:"keyName,omitempty"`
 	// ID of the program to call. Use `inherit` to use the program ID from the
-	// most recent create action.
+	// most recent create step.
 	ProgramID string `yaml:"program_id,omitempty" json:"programID,omitempty"`
 	// Used to override the program caller key.
 	CallerKey string `yaml:"caller_key,omitempty" json:"callerKey,omitempty"`
@@ -71,23 +74,21 @@ type Step struct {
 	// Params to pass to the function.
 	Params []Parameter `json,yaml:"params,omitempty"`
 	// Define assertions against the result of this step.
-	Require Require `json,yaml:"requires,omitempty"`
+	Require Require `json,yaml:"require,omitempty"`
 }
 
 type Require struct {
 	// Assertions against the result of the step.
 	Result Assertion `json,yaml:"result,omitempty"`
 	// Assertions against the fee balance after the step.
-	Balance Assertion `json,yaml:"result,omitempty"`
-	// Assertions against the error returned by the step.
-	WantError bool `json,yaml:"want_error"`
+	Balance Assertion `json,yaml:"balance,omitempty"`
 }
 
 type Assertion struct {
 	// Operator is the comparison operator to use.
 	Operator string `json,yaml:"operator"`
 	// Operand is the value to compare against the result of the step.
-	Operand int `json,yaml:"operand"`
+	Operand uint64 `json,yaml:"operand"`
 }
 
 type Operator string
@@ -152,32 +153,47 @@ func runSteps(cmd *cobra.Command, args []string) error {
 		return ErrInvalidConfigFormat
 	}
 
-	utils.Outf("{{green}}simulating: {{/}}%s\n", p.Name)
+	utils.Outf("{{green}}simulating: {{/}}%s\n\n", p.Name)
 
-	for _, action := range p.Steps {
-		switch action.Name {
+	for _, step := range p.Steps {
+		switch step.Name {
+		case "create_key":
+			if step.KeyName == "" {
+				return fmt.Errorf("%w: %s", ErrKeyNameRequired, step.Name)
+			}
+			err := newKey(cmd.Context(), db, step.KeyName)
+			if errors.Is(err, ErrDuplicateKeyName) {
+				utils.Outf("{{yellow}}key already exists: {{/}}%s\n", step.KeyName)
+			} else if err != nil {
+				return err
+			}
 		case "deploy":
-			if action.ProgramPath == "" {
-				return fmt.Errorf("%w: %s", ErrProgramPathRequired, action.Name)
+			if step.ProgramPath == "" {
+				return fmt.Errorf("%w: %s", ErrProgramPathRequired, step.Name)
 			}
 			var err error
-			programID, err = deployProgram(cmd.Context(), &action)
+			programID, err = deployProgram(cmd.Context(), &step)
 			if err != nil {
 				return err
 			}
-
 			utils.Outf("{{green}}deploy transaction successful: {{/}} %v\n\n", programID.String())
 		case "call":
-			utils.Outf("{{yellow}}max fee:{{/}} %v\n", action.MaxFee)
-			resp, id, err := callProgram(cmd.Context(), &action, &p.Config)
+			resp, id, err := callProgram(cmd.Context(), &step, &p.Config)
 			if err != nil {
 				return err
 			}
-
+			utils.Outf("{{yellow}}function:{{/}} %s\n", step.Function)
+			utils.Outf("{{yellow}}params:{{/}} %v\n", step.Params)
+			utils.Outf("{{yellow}}max fee:{{/}} %v\n", step.MaxFee)
+			if step.Require.Result != (Assertion{}) {
+				if !validateAssertion(resp, &step.Require.Result) {
+					return fmt.Errorf("%w: %d %s %d", ErrResultAssertionFailed, resp, step.Require.Result.Operator, step.Require.Result.Operand)
+				}
+			}
+			utils.Outf("{{blue}}response: {{/}}%d\n", resp)
 			utils.Outf("{{green}}call transaction successful: {{/}} %s\n", id.String())
-			utils.Outf("{{blue}}response: {{/}}%d\n\n", resp)
 		default:
-			return fmt.Errorf("%w: %s", ErrInvalidStep, action.Name)
+			return fmt.Errorf("%w: %s", ErrInvalidStep, step.Name)
 		}
 	}
 
@@ -204,7 +220,7 @@ func deployProgram(ctx context.Context, step *Step) (ids.ID, error) {
 }
 
 func callProgram(ctx context.Context, step *Step, config *Config) (uint64, ids.ID, error) {
-	// get program ID from deploy action if set to inherit
+	// get program ID from deploy step if set to inherit
 	var programIDBytes = make([]byte, 32)
 	if step.ProgramID == inheritIDKey {
 		copy(programIDBytes, programID[:])
@@ -269,10 +285,21 @@ func callProgram(ctx context.Context, step *Step, config *Config) (uint64, ids.I
 	if err != nil {
 		return 0, ids.Empty, err
 	}
-	utils.Outf("{{yellow}}fee balance: {{/}}%d\n", rt.Meter().GetBalance())
+
+	balance := rt.Meter().GetBalance()
+	utils.Outf("{{yellow}}fee balance: {{/}}%d\n", balance)
+	if step.Require.Balance != (Assertion{}) {
+		if !validateAssertion(balance, &step.Require.Balance) {
+			return 0, ids.Empty, fmt.Errorf("%w: %d %s %d", ErrBalanceAssertionFailed, balance, step.Require.Balance.Operator, step.Require.Balance.Operand)
+		}
+	}
+
 	return resp[0], callID, nil
 }
 
+// generateRandomID creates a unique ID.
+// Note: ids.GenerateID() is not used because the IDs are not unique and will
+// collide.
 func generateRandomID() (ids.ID, error) {
 	key := make([]byte, 32)
 	_, err := rand.Read(key)
@@ -298,7 +325,10 @@ func createParams(ctx context.Context, programID ids.ID, memory runtime.Memory, 
 	for _, param := range p {
 		switch strings.ToLower(param.Type) {
 		case "string":
-			val := param.Value.(string)
+			val, ok := param.Value.(string)
+			if !ok {
+				return nil, fmt.Errorf("%w: %s", ErrFailedParamTypeCast, param.Type)
+			}
 			ptr, err := runtime.WriteBytes(memory, []byte(val))
 			if err != nil {
 				return nil, err
@@ -308,7 +338,10 @@ func createParams(ctx context.Context, programID ids.ID, memory runtime.Memory, 
 			val := param.Value.(bool)
 			params = append(params, boolToUint64(val))
 		case "id":
-			val := param.Value.(string)
+			val, ok := param.Value.(string)
+			if !ok {
+				return nil, fmt.Errorf("%w: %s", ErrFailedParamTypeCast, param.Type)
+			}
 			id, err := ids.ToID([]byte(val))
 			if err != nil {
 				return nil, err
@@ -319,7 +352,10 @@ func createParams(ctx context.Context, programID ids.ID, memory runtime.Memory, 
 			}
 			params = append(params, ptr)
 		case "key":
-			val := param.Value.(string)
+			val, ok := param.Value.(string)
+			if !ok {
+				return nil, fmt.Errorf("%w: %s", ErrFailedParamTypeCast, param.Type)
+			}
 			// get named public key from db
 			key, ok, err := getPublicKey(ctx, db, val)
 			if !ok {
@@ -333,10 +369,49 @@ func createParams(ctx context.Context, programID ids.ID, memory runtime.Memory, 
 				return nil, err
 			}
 			params = append(params, ptr)
+		case "uint64":
+			val, ok := param.Value.(int)
+			if !ok {
+				return nil, fmt.Errorf("%w: %s", ErrFailedParamTypeCast, param.Type)
+			}
+			params = append(params, uint64(val))
+		default:
+			return nil, fmt.Errorf("%w: %s", ErrInvalidParamType, param.Type)
 		}
 	}
 
 	return params, nil
+}
+
+// validateAssertion validates the assertion against the actual value. Returns true if the assertion is nil.
+func validateAssertion(actual uint64, assertion *Assertion) bool {
+	operator := assertion.Operator
+	operand := assertion.Operand
+
+	switch Operator(operator) {
+	case GreaterThan:
+		if actual > operand {
+			return true
+		}
+	case LessThan:
+		if actual < operand {
+			return true
+		}
+	case GreaterThanOrEqual:
+		if actual >= operand {
+			return true
+		}
+	case LessThanOrEqual:
+		if actual <= operand {
+			return true
+		}
+	case EqualTo:
+		if actual == operand {
+			return true
+		}
+	}
+
+	return false
 }
 
 func boolToUint64(b bool) uint64 {

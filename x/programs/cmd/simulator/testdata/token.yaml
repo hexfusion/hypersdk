@@ -1,10 +1,16 @@
 # example of a token program
 name: token program
 description: Deploy and execute token program
-caller_key: alice 
+caller_key: alice_key
 config:
   max_memory_pages: 18
 steps:
+  - name: create_key
+    description: create alice key
+    key_name: alice_key
+  - name: create_key
+    description: create bob key
+    key_name: bob_key
   - name: deploy
     description: deploy a new token program
     program_path: ../../examples/testdata/token.wasm
@@ -14,10 +20,26 @@ steps:
     function: init
     program_id: inherit #inherit id created from deploy above
     max_fee: 100000
+  - name: call
+    description: mint to alice
+    function: mint_to
+    program_id: inherit #inherit id created from deploy above
+    max_fee: 100000
+    params:
+      - type: key
+        value: alice_key
+      - type: uint64
+        value: 10000
     require:
       result:
-        operator: ">="
+        operator: "=="
         operand: 1
-      balance:
-        operator: ">="
-        operand: 90000
+  - name : call
+    description: get token balance
+    function: get_total_supply
+    program_id: inherit #inherit id created from deploy above
+    max_fee: 100000
+    require:
+      result:
+        operator: "=="
+        operand: 123456789

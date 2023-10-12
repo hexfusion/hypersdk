@@ -36,7 +36,7 @@ func NewRootCmd() *cobra.Command {
 
 			// Open storage
 			dbPath := path.Join(homeDir, dbFolder)
-			db, dbCloser, err = getDB(context.Background(), dbPath)
+			db, dbCloser, err = getStorage(context.Background(), dbPath)
 			if err != nil {
 				return err
 			}

@@ -12,4 +12,5 @@ var (
 	ErrInvalidStep       = errors.New("invalid step")
 	ErrDuplicateKeyName    = errors.New("duplicate key name")
 	ErrNamedKeyNotFound    = errors.New("named key not found")
+	ErrInvalidConfigFormat = errors.New("invalid config format")
 )

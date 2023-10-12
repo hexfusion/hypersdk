@@ -30,7 +30,7 @@ var defaultDBConfig = merkledb.Config{
 
 type dBCloserFn func() error
 
-func getDB(ctx context.Context, dbPath string) (*state.SimpleMutable, dBCloserFn, error) {
+func getStorage(ctx context.Context, dbPath string) (*state.SimpleMutable, dBCloserFn, error) {
 	pdb, _, err := pebble.New(dbPath, pebble.NewDefaultConfig())
 	if err != nil {
 		return nil, nil, err

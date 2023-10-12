@@ -6,6 +6,7 @@ package cmd
 import (
 	"context"
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -138,9 +139,17 @@ func runSteps(cmd *cobra.Command, args []string) error {
 	}
 
 	var p Program
-	err = yaml.Unmarshal(configBytes, &p)
-	if err != nil {
-		return err
+	switch {
+	case isJSON(string(configBytes)):
+		if err := json.Unmarshal(configBytes, &p); err != nil {
+			return err
+		}
+	case isYAML(string(configBytes)):
+		if err := yaml.Unmarshal(configBytes, &p); err != nil {
+			return err
+		}
+	default:
+		return ErrInvalidConfigFormat
 	}
 
 	utils.Outf("{{green}}simulating: {{/}}%s\n", p.Name)
@@ -335,4 +344,14 @@ func boolToUint64(b bool) uint64 {
 		return 1
 	}
 	return 0
+}
+
+func isJSON(s string) bool {
+	var js map[string]interface{}
+	return json.Unmarshal([]byte(s), &js) == nil
+}
+
+func isYAML(s string) bool {
+	var y map[string]interface{}
+	return yaml.Unmarshal([]byte(s), &y) == nil
 }

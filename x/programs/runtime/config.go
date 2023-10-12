@@ -3,7 +3,14 @@
 
 package runtime
 
-import "github.com/bytecodealliance/wasmtime-go/v13"
+import (
+	"fmt"
+	"math"
+
+	"github.com/ava-labs/avalanchego/utils/wrappers"
+
+	"github.com/bytecodealliance/wasmtime-go/v13"
+)
 
 const (
 	defaultMaxWasmStack                 = 256 * 1024 * 1024 // 256 MiB
@@ -35,11 +42,14 @@ func NewConfigBuilder(meterMaxUnits uint64) *builder {
 	return &builder{
 		cfg:           cfg,
 		meterMaxUnits: meterMaxUnits,
+		err: wrappers.Errs{},
 	}
 }
 
 type builder struct {
 	cfg *wasmtime.Config
+	// errs tracks if an error has occurred in the builder.
+	err wrappers.Errs
 
 	// engine
 	compileStrategy EngineCompileStrategy
@@ -138,7 +148,11 @@ func (b *builder) WithProfilingStrategy(strategy wasmtime.ProfilingStrategy) *bu
 //
 // Default is 16 pages.
 func (b *builder) WithLimitMaxMemory(max uint64) *builder {
-	b.limitMaxMemory = int64(max)
+	if max > math.MaxInt64 {
+		b.err.Add(fmt.Errorf("max memory %d is greater than max int64 %d", max, math.MaxInt64))
+	} else {
+		b.limitMaxMemory = int64(max)
+	}
 	return b
 }
 
@@ -164,6 +178,9 @@ func (b *builder) WithEnableTestingOnlyMode(enabled bool) *builder {
 }
 
 func (b *builder) Build() (*Config, error) {
+	if b.err.Errored() {
+		return nil, b.err.Err
+	}
 	if b.defaultCache {
 		err := b.cfg.CacheConfigLoadDefault()
 		if err != nil {

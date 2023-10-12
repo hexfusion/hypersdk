@@ -42,7 +42,6 @@ func NewConfigBuilder(meterMaxUnits uint64) *builder {
 	return &builder{
 		cfg:           cfg,
 		meterMaxUnits: meterMaxUnits,
-		err: wrappers.Errs{},
 	}
 }
 

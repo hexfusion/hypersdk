@@ -1,4 +1,4 @@
-module github.com/ava-labs/hypersdk/x/programs/examples/simulator
+module github.com/ava-labs/hypersdk/x/programs/cmd/simulator
 
 go 1.20
 

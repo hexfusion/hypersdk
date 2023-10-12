@@ -4,7 +4,7 @@ description: Deploy and execute token program
 caller_key: alice 
 config:
   max_memory_pages: 18
-actions:
+steps:
   - name: deploy
     description: deploy a new token program
     program_path: ../testdata/token.wasm
@@ -14,4 +14,8 @@ actions:
     function: init
     program_id: inherit #inherit id created from deploy above
     max_fee: 100000
-  
+    require:
+      result:
+        operator: "=="
+        operand: 1
+      want_error: false

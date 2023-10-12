@@ -33,11 +33,16 @@ var (
 )
 
 type Program struct {
-	Name        string   `yaml:"name"`
-	Description string   `yaml:"description"`
-	Actions     []Action `yaml:"actions"`
-	CallerKey   string   `yaml:"caller_key"`
-	Config      Config   `yaml:"config"`
+	// Name of the program.
+	Name string `yaml:"name"`
+	// Description of the program.
+	Description string `yaml:"description"`
+	// Steps to perform against the program.
+	Steps []Step `yaml:"steps"`
+	// Key of the caller to use for all steps.
+	CallerKey string `yaml:"caller_key"`
+	// Runtime configuration.
+	Config Config `yaml:"config"`
 }
 
 type Config struct {
@@ -46,37 +51,64 @@ type Config struct {
 	MaxMemoryPages uint64 `yaml:"max_memory_pages"`
 }
 
-type Action struct {
+type Step struct {
 	// Name of the action to perform. Valid values are: create, call.
-	Name string `yaml:"name"`
+	Name string `json,yaml:"name"`
 	// Description of the action.
-	Description string `yaml:"description"`
+	Description string `json,yaml:"description"`
 	// Maximum fee to pay for the action.
-	MaxFee uint64 `yaml:"max_fee"`
+	MaxFee uint64 `yaml:"max_fee" json:"maxFee"`
 	// Path to the program to deploy. Only used with deploy actions.
-	ProgramPath string `yaml:"program_path,omitempty"`
+	ProgramPath string `yaml:"program_path,omitempty" json:"programPath,omitempty"`
 	// ID of the program to call. Use `inherit` to use the program ID from the
 	// most recent create action.
-	ProgramID string `yaml:"program_id,omitempty"`
+	ProgramID string `yaml:"program_id,omitempty" json:"programID,omitempty"`
 	// Used to override the program caller key.
-	CallerKey string `yaml:"caller_key,omitempty"`
+	CallerKey string `yaml:"caller_key,omitempty" json:"callerKey,omitempty"`
 	// Name of the function to call.
-	Function string `yaml:"function,omitempty"`
-	// Parameters to pass to the function.
-	Parameters []Parameter `yaml:"parameters,omitempty"`
+	Function string `json,yaml:"function,omitempty"`
+	// Params to pass to the function.
+	Params []Parameter `json,yaml:"params,omitempty"`
+	// Define assertions against the result of this step.
+	Require Require `json,yaml:"requires,omitempty"`
 }
+
+type Require struct {
+	// Assertions against the result of the step.
+	Result Assertion `json,yaml:"result,omitempty"`
+	// Assertions against the fee balance after the step.
+	Balance Assertion `json,yaml:"result,omitempty"`
+	// Assertions against the error returned by the step.
+	WantError bool `json,yaml:"want_error"`
+}
+
+type Assertion struct {
+	// Operator is the comparison operator to use.
+	Operator string `json,yaml:"operator"`
+	// Operand is the value to compare against the result of the step.
+	Operand int `json,yaml:"operand"`
+}
+
+type Operator string
+
+const (
+	GreaterThan        Operator = ">"
+	LessThan           Operator = "<"
+	GreaterThanOrEqual Operator = ">="
+	LessThanOrEqual    Operator = "<="
+	EqualTo            Operator = "=="
+	NotEqualTo         Operator = "!="
+)
 
 type Parameter struct {
 	Type  string      `yaml:"type"`
 	Value interface{} `yaml:"value"`
 }
 
-func programCmd() *cobra.Command {
+func newProgramCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "program",
-		RunE: func(*cobra.Command, []string) error {
-			return ErrMissingSubcommand
-		},
+		Use:   "program",
+		Short: "Manage programs",
 	}
 
 	// add subcommands
@@ -89,17 +121,15 @@ func programCmd() *cobra.Command {
 func runCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run [path]",
-		Short: "Run a series of program actions from config file",
-		RunE:  runCmdFunc,
+		Short: "Run a series of program steps from config file",
+		RunE:  runSteps,
+		Args:  cobra.MinimumNArgs(1),
 	}
 
 	return cmd
 }
 
-func runCmdFunc(cmd *cobra.Command, args []string) error {
-	if len(args) == 0 {
-		return fmt.Errorf("%w: %s", ErrMissingArgument, "config file path")
-	}
+func runSteps(cmd *cobra.Command, args []string) error {
 	configPath := args[0]
 
 	configBytes, err := os.ReadFile(configPath)
@@ -115,14 +145,14 @@ func runCmdFunc(cmd *cobra.Command, args []string) error {
 
 	utils.Outf("{{green}}simulating: {{/}}%s\n", p.Name)
 
-	for _, action := range p.Actions {
+	for _, action := range p.Steps {
 		switch action.Name {
 		case "deploy":
 			if action.ProgramPath == "" {
 				return fmt.Errorf("%w: %s", ErrProgramPathRequired, action.Name)
 			}
 			var err error
-			programID, err = deployProgram(context.Background(), &action)
+			programID, err = deployProgram(cmd.Context(), &action)
 			if err != nil {
 				return err
 			}
@@ -130,22 +160,23 @@ func runCmdFunc(cmd *cobra.Command, args []string) error {
 			utils.Outf("{{green}}deploy transaction successful: {{/}} %v\n\n", programID.String())
 		case "call":
 			utils.Outf("{{yellow}}max fee:{{/}} %v\n", action.MaxFee)
-			resp, id, err := callProgram(context.Background(), &action, &p.Config)
+			resp, id, err := callProgram(cmd.Context(), &action, &p.Config)
 			if err != nil {
 				return err
 			}
+
 			utils.Outf("{{green}}call transaction successful: {{/}} %s\n", id.String())
 			utils.Outf("{{blue}}response: {{/}}%d\n\n", resp)
 		default:
-			return fmt.Errorf("%w: %s", ErrInvalidAction, action.Name)
+			return fmt.Errorf("%w: %s", ErrInvalidStep, action.Name)
 		}
 	}
 
 	return nil
 }
 
-func deployProgram(ctx context.Context, action *Action) (ids.ID, error) {
-	programBytes, err := os.ReadFile(action.ProgramPath)
+func deployProgram(ctx context.Context, step *Step) (ids.ID, error) {
+	programBytes, err := os.ReadFile(step.ProgramPath)
 	if err != nil {
 		return ids.Empty, err
 	}
@@ -163,13 +194,13 @@ func deployProgram(ctx context.Context, action *Action) (ids.ID, error) {
 	return programID, nil
 }
 
-func callProgram(ctx context.Context, action *Action, config *Config) (uint64, ids.ID, error) {
+func callProgram(ctx context.Context, step *Step, config *Config) (uint64, ids.ID, error) {
 	// get program ID from deploy action if set to inherit
 	var programIDBytes = make([]byte, 32)
-	if action.ProgramID == inheritIDKey {
+	if step.ProgramID == inheritIDKey {
 		copy(programIDBytes, programID[:])
 	} else {
-		copy(programIDBytes, []byte(action.ProgramID))
+		copy(programIDBytes, []byte(step.ProgramID))
 	}
 
 	programID, err := ids.ToID(programIDBytes)
@@ -192,7 +223,7 @@ func callProgram(ctx context.Context, action *Action, config *Config) (uint64, i
 		return 0, ids.Empty, err
 	}
 
-	cfg, err := newConfig(action, config)
+	cfg, err := newConfig(step, config)
 	if err != nil {
 		return 0, ids.Empty, err
 	}
@@ -214,12 +245,12 @@ func callProgram(ctx context.Context, action *Action, config *Config) (uint64, i
 	}
 
 	// get function params
-	params, err := createParams(ctx, programID, rt.Memory(), db, action.Parameters)
+	params, err := createParams(ctx, programID, rt.Memory(), db, step.Params)
 	if err != nil {
 		return 0, ids.Empty, err
 	}
 
-	resp, err := rt.Call(ctx, action.Function, params...)
+	resp, err := rt.Call(ctx, step.Function, params...)
 	if err != nil {
 		return 0, ids.Empty, err
 	}

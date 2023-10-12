@@ -22,31 +22,29 @@ const (
 	keyPrefix = 0x1
 )
 
-func keyCmd() *cobra.Command {
+func newKeyCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use: "key",
-		RunE: func(*cobra.Command, []string) error {
-			return ErrMissingSubcommand
-		},
+		Use:   "key",
+		Short: "Manage private keys",
 	}
-	// add subcommands
 	cmd.AddCommand(
-		newKeyCmd(),
+		newCreateKeyCmd(),
 	)
 	return cmd
 }
 
-func newKeyCmd() *cobra.Command {
+func newCreateKeyCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "new",
+		Use:   "create [name]",
 		Short: "Creates a new named private key and stores it in the database",
-		RunE:  newKeyFunc,
+		RunE:  createKey,
+		Args:  cobra.MinimumNArgs(1),
 	}
 }
 
-func newKeyFunc(cmd *cobra.Command, args []string) error {
+func createKey(cmd *cobra.Command, args []string) error {
 	name := args[0]
-	err := newKey(context.Background(), db, name)
+	err := newKey(cmd.Context(), db, name)
 	if err != nil {
 		return err
 	}
@@ -56,9 +54,6 @@ func newKeyFunc(cmd *cobra.Command, args []string) error {
 }
 
 func newKey(ctx context.Context, db *state.SimpleMutable, name string) error {
-	if name == "" {
-		return fmt.Errorf("%w: %s", ErrMissingArgument, "key name")
-	}
 	priv, err := ed25519.GeneratePrivateKey()
 	if err != nil {
 		return err

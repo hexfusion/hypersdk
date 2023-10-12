@@ -7,8 +7,8 @@ import (
 	"github.com/ava-labs/hypersdk/x/programs/runtime"
 )
 
-func newConfig(action *Action, config *Config) (*runtime.Config, error) {
-	return runtime.NewConfigBuilder(action.MaxFee).
+func newConfig(step *Step, config *Config) (*runtime.Config, error) {
+	return runtime.NewConfigBuilder(step.MaxFee).
 		WithEnableTestingOnlyMode(true).
 		WithBulkMemory(true).
 		WithLimitMaxMemory(config.MaxMemoryPages * runtime.MemoryPageSize).

@@ -984,18 +984,19 @@ _This is a collection of posts from the community about the `hypersdk` and how t
 
 * [Introducing HyperSDK](https://twitter.com/_patrickogrady/status/1628109791267819520)
 * [HyperSDK - Chorus One](https://twitter.com/ChorusOne/status/1628404359381024775)
+* [Building blockchains in days w/ HyperSDK](https://0xronin.substack.com/p/building-blockchains-in-days-w-hypersdk?r=1qbgyb&utm_campaign=post&utm_medium=web)
 * [An Analysis of the Developing State of Avalanche’s Technology](https://www.thetie.io/insights/research/an-analysis-of-the-developing-state-of-avalanches-technology/)
 * [Launching Custom Tokens With HyperSDK By Avalanche](https://pythontony.hashnode.dev/launching-custom-tokens-with-hypersdk-by-avalanche)
 * [Avalanche VMs deep-dive #1: HyperSDK/tokenvm](https://ashavax.hashnode.dev/avalanche-vms-deep-dive-1-hypersdktokenvm)
+* [Avalanche – Building High Performance VMs With HyperSDK](https://epicenter.tv/episodes/506/)
+* [Avalanche’s HyperSDK blockchain upgrade hits 143K TPS on testnet](https://cointelegraph.com/news/avalanche-hyper-sdk-blockchain-upgrade-hits-143000-tps-on-testnet)
+* [Avalanche’s HyperSDK](https://simpleswap.io/blog/avalanches-hyper-sdk)
 
-## HyperSDK Projects 👀
-_This is a gallery of community projects currently building on top of the HyperSDK._
+## Community Projects
+_This is a collection of community projects building on top of the `hypersdk`._
 
 * [NodeKit: Decentralizing The L2 Sequencer on a Subnet](https://github.com/AnomalyFi/nodekit-seq)
 * [OracleVM: Providing OffChain Data to the Avalanche Ecosystem](https://github.com/bianyuanop/oraclevm)
-* ShuttleVM: Trusted Execution Environment for Wasm Programs to run distributed workloads on a subnet
-
-
 
 ## Future Work
 _If you want to take the lead on any of these items, please
@@ -1005,7 +1006,6 @@ out on the Avalanche Discord._
 * Use pre-specified state keys to process transactions in parallel (txs with no
   overlap can be processed at the same time, create conflict sets on-the-fly
   instead of before execution)
-* Create an embedded explorer and wallet that is compatible with any hypervm
 * Add support for Fixed-Fee Accounts (pay set unit price no matter what)
 * Use a memory arena (pre-allocated memory) to avoid needing to dynamically
   allocate memory during block  and transaction parsing
@@ -1025,3 +1025,12 @@ out on the Avalanche Discord._
   hosts.
 * Only set `export CGO_CFLAGS="-O -D__BLST_PORTABLE__"` when running on
   MacOS/Windows (will make Linux much more performant)
+
+## Troubleshooting
+### `undefined: Message`
+If you get the following error, make sure to install `gcc` before running
+`./scripts/build.sh`:
+```
+# github.com/supranational/blst/bindings/go
+../../../go/pkg/mod/github.com/supranational/blst@v0.3.11-0.20220920110316-f72618070295/bindings/go/rb_tree.go:130:18: undefined: Message
+```

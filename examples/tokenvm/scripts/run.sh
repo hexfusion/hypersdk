@@ -17,7 +17,7 @@ if ! [[ "$0" =~ scripts/run.sh ]]; then
   exit 255
 fi
 
-VERSION=v1.10.10
+VERSION=v1.10.12
 MAX_UINT64=18446744073709551615
 MODE=${MODE:-run}
 LOGLEVEL=${LOGLEVEL:-info}
@@ -248,6 +248,7 @@ echo "running e2e tests"
 ./tests/e2e/e2e.test \
 --ginkgo.v \
 --network-runner-log-level verbo \
+--avalanchego-log-level ${LOGLEVEL} \
 --network-runner-grpc-endpoint="0.0.0.0:12352" \
 --network-runner-grpc-gateway-endpoint="0.0.0.0:12353" \
 --avalanchego-path=${AVALANCHEGO_PATH} \

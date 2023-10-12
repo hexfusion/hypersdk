@@ -43,3 +43,44 @@ steps:
       result:
         operator: "=="
         operand: 123456789
+  - name: call
+    description: transfer 100 from alice to bob
+    function: transfer
+    program_id: inherit #inherit id created from deploy above
+    max_fee: 100000
+    params:
+      - type: key
+        value: alice_key
+      - type: key
+        value: bob_key
+      - type: uint64
+        value: 100
+    require:
+      result:
+        operator: "=="
+        operand: 1
+  - name: call
+    description: get alice token balance
+    function: get_balance
+    program_id: inherit #inherit id created from deploy above
+    max_fee: 100000
+    params:
+      - type: key
+        value: alice_key
+    require:
+      result:
+        operator: "=="
+        operand: 9900
+  - name: call
+    description: get bob token balance
+    function: get_balance
+    program_id: inherit #inherit id created from deploy above
+    max_fee: 100000
+    params:
+      - type: key
+        value: bob_key
+    require:
+      result:
+        operator: "=="
+        operand: 100
+

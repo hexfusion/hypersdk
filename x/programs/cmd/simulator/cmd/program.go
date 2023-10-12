@@ -50,7 +50,7 @@ type Program struct {
 type Config struct {
 	// Maximum number of pages of memory that can be used.
 	// Each page represents 64KiB of memory.
-	MaxMemoryPages uint64 `yaml:"max_memory_pages"`
+	MaxMemoryPages uint64 `yaml:"max_memory_pages" json:"maxMemoryPages,omitempty"`
 }
 
 type Step struct {
@@ -178,16 +178,23 @@ func runSteps(cmd *cobra.Command, args []string) error {
 			}
 			utils.Outf("{{green}}deploy transaction successful: {{/}} %v\n\n", programID.String())
 		case "call":
-			resp, id, err := callProgram(cmd.Context(), &step, &p.Config)
+			id, resp, balance, err := callProgram(cmd.Context(), &step, &p.Config)
 			if err != nil {
 				return err
 			}
-			utils.Outf("{{yellow}}function:{{/}} %s\n", step.Function)
-			utils.Outf("{{yellow}}params:{{/}} %v\n", step.Params)
-			utils.Outf("{{yellow}}max fee:{{/}} %v\n", step.MaxFee)
+			utils.Outf("{{yellow}}description: {{/}}%s\n", step.Description)
+			utils.Outf("{{yellow}}function: {{/}}%s\n", step.Function)
+			utils.Outf("{{yellow}}params: {{/}}%v\n", step.Params)
+			utils.Outf("{{yellow}}max fee: {{/}}%v\n", step.MaxFee)
 			if step.Require.Result != (Assertion{}) {
 				if !validateAssertion(resp, &step.Require.Result) {
 					return fmt.Errorf("%w: %d %s %d", ErrResultAssertionFailed, resp, step.Require.Result.Operator, step.Require.Result.Operand)
+				}
+			}
+			utils.Outf("{{yellow}}fee balance: {{/}}%d\n", balance)
+			if step.Require.Balance != (Assertion{}) {
+				if !validateAssertion(balance, &step.Require.Balance) {
+					return fmt.Errorf("%w: %d %s %d", ErrBalanceAssertionFailed, balance, step.Require.Balance.Operator, step.Require.Balance.Operand)
 				}
 			}
 			utils.Outf("{{blue}}response: {{/}}%d\n", resp)
@@ -219,7 +226,7 @@ func deployProgram(ctx context.Context, step *Step) (ids.ID, error) {
 	return programID, nil
 }
 
-func callProgram(ctx context.Context, step *Step, config *Config) (uint64, ids.ID, error) {
+func callProgram(ctx context.Context, step *Step, config *Config) (ids.ID, uint64, uint64, error) {
 	// get program ID from deploy step if set to inherit
 	var programIDBytes = make([]byte, 32)
 	if step.ProgramID == inheritIDKey {
@@ -230,27 +237,27 @@ func callProgram(ctx context.Context, step *Step, config *Config) (uint64, ids.I
 
 	programID, err := ids.ToID(programIDBytes)
 	if err != nil {
-		return 0, ids.Empty, err
+		return ids.Empty, 0, 0, err
 	}
 
 	// get program bytes from disk
 	programBytes, ok, err := storage.GetProgram(ctx, db, programID)
 	if !ok {
-		return 0, ids.Empty, fmt.Errorf("%w: %s", ErrProgramNotFound, programID)
+		return ids.Empty, 0, 0, fmt.Errorf("%w: %s", ErrProgramNotFound, programID)
 	}
 	if err != nil {
-		return 0, ids.Empty, err
+		return ids.Empty, 0, 0, err
 	}
 
 	// simulate call program transaction
 	callID, err := generateRandomID()
 	if err != nil {
-		return 0, ids.Empty, err
+		return ids.Empty, 0, 0, err
 	}
 
 	cfg, err := newConfig(step, config)
 	if err != nil {
-		return 0, ids.Empty, err
+		return ids.Empty, 0, 0, err
 	}
 
 	// TODO: handle custom imports
@@ -266,35 +273,27 @@ func callProgram(ctx context.Context, step *Step, config *Config) (uint64, ids.I
 	defer rt.Stop()
 	err = rt.Initialize(ctx, programBytes)
 	if err != nil {
-		return 0, ids.Empty, err
+		return ids.Empty, 0, 0, err
 	}
 
 	// get function params
 	params, err := createParams(ctx, programID, rt.Memory(), db, step.Params)
 	if err != nil {
-		return 0, ids.Empty, err
+		return ids.Empty, 0, 0, err
 	}
 
 	resp, err := rt.Call(ctx, step.Function, params...)
 	if err != nil {
-		return 0, ids.Empty, err
+		return ids.Empty, 0, 0, err
 	}
 
 	// only commit to state if the call is successful
 	err = db.Commit(ctx)
 	if err != nil {
-		return 0, ids.Empty, err
+		return ids.Empty, 0, 0, err
 	}
 
-	balance := rt.Meter().GetBalance()
-	utils.Outf("{{yellow}}fee balance: {{/}}%d\n", balance)
-	if step.Require.Balance != (Assertion{}) {
-		if !validateAssertion(balance, &step.Require.Balance) {
-			return 0, ids.Empty, fmt.Errorf("%w: %d %s %d", ErrBalanceAssertionFailed, balance, step.Require.Balance.Operator, step.Require.Balance.Operand)
-		}
-	}
-
-	return resp[0], callID, nil
+	return callID, resp[0], rt.Meter().GetBalance(), nil
 }
 
 // generateRandomID creates a unique ID.
@@ -370,11 +369,15 @@ func createParams(ctx context.Context, programID ids.ID, memory runtime.Memory, 
 			}
 			params = append(params, ptr)
 		case "uint64":
-			val, ok := param.Value.(int)
-			if !ok {
+			switch v := param.Value.(type) {
+			case float64:
+				// json unmarshal converts all numbers to float64
+				params = append(params, uint64(v))
+			case int:
+				params = append(params, uint64(v))
+			default:
 				return nil, fmt.Errorf("%w: %s", ErrFailedParamTypeCast, param.Type)
 			}
-			params = append(params, uint64(val))
 		default:
 			return nil, fmt.Errorf("%w: %s", ErrInvalidParamType, param.Type)
 		}

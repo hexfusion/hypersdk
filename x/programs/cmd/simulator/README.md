@@ -20,18 +20,21 @@ To test a HyperSDK Program you will need to create a `run` file. We currently su
 
 Deploying a HyperSDK Program to the VM Simulator can be as simple as.
 
+
+```sh
 # create a key
-```
 ./simulator key create my_key
 database: /home/dev/.simulator/db
 created new private key: my_key
 ```
 
-# deploy
-```
-./simulator program deploy ./my_program.wasm --key my_key
-```
 
+```sh
+# deploy program
+./simulator program deploy ./my_program.wasm --key my_key
+database: /home/dev/.simulator/db
+deploy transaction successful: 2ar15Y1ZCEnCYcLQKCMb53qkL2JFXthJj4vN8wCutxyXERBCMD
+```
 
 In this example we will create a new key `my_key` and deploy a new program using
 a run file.

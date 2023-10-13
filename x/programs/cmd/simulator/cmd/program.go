@@ -122,7 +122,7 @@ func newProgramCmd() *cobra.Command {
 func runCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run [path]",
-		Short: "Run a series of program steps from config file",
+		Short: "Run a series of program steps from a run file",
 		RunE:  runSteps,
 		Args:  cobra.MinimumNArgs(1),
 	}

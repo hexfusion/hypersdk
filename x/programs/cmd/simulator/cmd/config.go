@@ -7,7 +7,7 @@ import (
 	"github.com/ava-labs/hypersdk/x/programs/runtime"
 )
 
-func newConfig(step *Step, config *Config) *runtime.Config{
+func newConfig(step *Step, config *Config) *runtime.Config {
 	return runtime.NewConfig(step.MaxFee).
 		WithEnableTestingOnlyMode(true).
 		// TODO: remove when non wasi-preview logging is supported

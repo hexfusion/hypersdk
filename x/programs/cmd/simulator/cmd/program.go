@@ -102,8 +102,10 @@ const (
 )
 
 type Parameter struct {
-	Type  string      `yaml:"type"`
-	Value interface{} `yaml:"value"`
+	// Name of the parameter is only used to improve readability of run files.
+	Name  string      `json,yaml:"name,omitempty"`
+	Type  string      `json,yaml:"type"`
+	Value interface{} `json,yaml:"value"`
 }
 
 func newProgramCmd() *cobra.Command {

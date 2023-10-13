@@ -296,18 +296,14 @@ func callProgram(ctx context.Context, step *Step, config *Config) (ids.ID, uint6
 		return ids.Empty, 0, 0, err
 	}
 
-	cfg, err := newConfig(step, config)
-	if err != nil {
-		return ids.Empty, 0, 0, err
-	}
-
+	cfg := newConfig(step, config)
 	// TODO: handle custom imports
 	supported := runtime.NewSupportedImports()
 	supported.Register("state", func() runtime.Import {
 		return pstate.New(log, db)
 	})
 	supported.Register("program", func() runtime.Import {
-		return program.New(log, db)
+		return program.New(log, db, cfg)
 	})
 
 	rt := runtime.New(log, cfg, supported.Imports())

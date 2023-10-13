@@ -26,10 +26,11 @@ const (
 	defaultCraneliftOptLevel            = wasmtime.OptLevelSpeed
 	defaultEnableReferenceTypes         = false
 	defaultEnableBulkMemory             = false
-	defaultProfiler                     = wasmtime.ProfilingStrategyNone
+	defaultProfilingStrategy            = wasmtime.ProfilingStrategyNone
 	defaultMultiValue                   = false
 	defaultEnableCraneliftDebugVerifier = false
 	defaultEnableDebugInfo              = false
+	defaultCompileStrategy              = CompileWasm
 
 	defaultLimitMaxTableElements = 4096
 	defaultLimitMaxTables        = 1
@@ -37,31 +38,31 @@ const (
 	defaultLimitMaxMemories      = 1
 )
 
-func NewConfigBuilder(meterMaxUnits uint64) *builder {
-	cfg := defaultWasmtimeConfig()
-	return &builder{
-		cfg:           cfg,
+// NewConfig returns a new runtime configuration.
+func NewConfig(meterMaxUnits uint64) *Config {
+	return &Config{
 		meterMaxUnits: meterMaxUnits,
 	}
 }
 
-type builder struct {
-	cfg *wasmtime.Config
-	// errs tracks if an error has occurred in the builder.
-	err wrappers.Errs
+type Config struct {
+	enableBulkMemory         bool
+	enableWasmMultiValue     bool
+	enableWasmReferenceTypes bool
+	enableWasmSIMD           bool
+	enableDefaultCache       bool
+	enableTestingOnlyMode    bool
 
-	// engine
-	compileStrategy EngineCompileStrategy
-	defaultCache    bool
-	meterMaxUnits   uint64
+	maxWasmStack      int
+	limitMaxMemory    int64
+	profilingStrategy wasmtime.ProfilingStrategy
+	compileStrategy   EngineCompileStrategy
 
-	testingOnlyMode bool
-
-	// limit
-	limitMaxMemory int64
+	err           wrappers.Errs
+	meterMaxUnits uint64
 }
 
-type Config struct {
+type config struct {
 	engine *wasmtime.Config
 
 	// store limits
@@ -74,42 +75,49 @@ type Config struct {
 
 	testingOnlyMode bool
 
-	compileStrategy EngineCompileStrategy
 	meterMaxUnits   uint64
+	compileStrategy EngineCompileStrategy
+}
+
+// ResetUnits resets the meters max units to 0. This is useful for initializing
+// a secondary runtime.
+func (c *Config) ResetUnits() *Config {
+	c.meterMaxUnits = NoUnits
+	return c
 }
 
 // WithCompileStrategy defines the EngineCompileStrategy.
 // Default is “.
-func (b *builder) WithCompileStrategy(strategy EngineCompileStrategy) *builder {
-	b.compileStrategy = strategy
-	return b
+func (c *Config) WithCompileStrategy(strategy EngineCompileStrategy) *Config {
+	c.compileStrategy = strategy
+	return c
 }
 
 // WithMaxWasmStack defines the maximum amount of stack space available for
 // executing WebAssembly code.
 //
 // Default is 256 MiB.
-func (b *builder) WithMaxWasmStack(max int) *builder {
-	b.cfg.SetMaxWasmStack(max)
-	return b
+func (c *Config) WithMaxWasmStack(max int) *Config {
+	c.maxWasmStack = max
+	return c
 }
 
 // WithMultiValue enables modules that can return multiple values.
 //
 // ref. https://github.com/webassembly/multi-value
 // Default is false.
-func (b *builder) WithMultiValue(enable bool) *builder {
-	b.cfg.SetWasmMultiValue(enable)
-	return b
+func (c *Config) WithMultiValue(enable bool) *Config {
+	c.enableWasmMultiValue = enable
+	return c
 }
 
 // WithBulkMemory enables`memory.copy` instruction, tables and passive data.
 //
 // ref. https://github.com/WebAssembly/bulk-memory-operations
 // Default is false.
-func (b *builder) WithBulkMemory(enable bool) *builder {
-	b.cfg.SetWasmBulkMemory(enable)
-	return b
+func (c *Config) WithBulkMemory(enable bool) *Config {
+	c.enableBulkMemory = enable
+	return c
 }
 
 // WithReferenceTypes Enables the `externref` and `funcref` types as well as
@@ -119,48 +127,48 @@ func (b *builder) WithBulkMemory(enable bool) *builder {
 //
 // Note: depends on bulk memory being enabled.
 // Default is false.
-func (b *builder) WithReferenceTypes(enable bool) *builder {
-	b.cfg.SetWasmReferenceTypes(enable)
-	return b
+func (c *Config) WithReferenceTypes(enable bool) *Config {
+	c.enableWasmReferenceTypes = enable
+	return c
 }
 
 // WithSIMD enables SIMD instructions including v128.
 //
 // ref. https://github.com/webassembly/simd
 // Default is false.
-func (b *builder) WithSIMD(enable bool) *builder {
-	b.cfg.SetWasmSIMD(enable)
-	return b
+func (c *Config) WithSIMD(enable bool) *Config {
+	c.enableWasmSIMD = enable
+	return c
 }
 
 // WithProfilingStrategy defines the profiling strategy used for defining the
 // default profiler.
 //
 // Default is `wasmtime.ProfilingStrategyNone`.
-func (b *builder) WithProfilingStrategy(strategy wasmtime.ProfilingStrategy) *builder {
-	b.cfg.SetProfiler(strategy)
-	return b
+func (c *Config) WithProfilingStrategy(strategy wasmtime.ProfilingStrategy) *Config {
+	c.profilingStrategy = strategy
+	return c
 }
 
 // WithLimitMaxMemory defines the maximum number of pages of memory that can be used.
 // Each page represents 64KiB of memory.
 //
 // Default is 16 pages.
-func (b *builder) WithLimitMaxMemory(max uint64) *builder {
+func (c *Config) WithLimitMaxMemory(max uint64) *Config {
 	if max > math.MaxInt64 {
-		b.err.Add(fmt.Errorf("max memory %d is greater than max int64 %d", max, math.MaxInt64))
+		c.err.Add(fmt.Errorf("max memory %d is greater than max int64 %d", max, math.MaxInt64))
 	} else {
-		b.limitMaxMemory = int64(max)
+		c.limitMaxMemory = int64(max)
 	}
-	return b
+	return c
 }
 
 // WithDefaultCache enables the default caching strategy.
 //
 // Default is false.
-func (b *builder) WithDefaultCache(enabled bool) *builder {
-	b.defaultCache = enabled
-	return b
+func (c *Config) WithDefaultCache(enabled bool) *Config {
+	c.enableDefaultCache = enabled
+	return c
 }
 
 // WithEnableTestingOnlyMode enables test mode which provides access to
@@ -171,29 +179,60 @@ func (b *builder) WithDefaultCache(enabled bool) *builder {
 // compiled with the wasm32-wasi target.
 //
 // Default is false.
-func (b *builder) WithEnableTestingOnlyMode(enabled bool) *builder {
-	b.testingOnlyMode = enabled
-	return b
+func (c *Config) WithEnableTestingOnlyMode(enabled bool) *Config {
+	c.enableTestingOnlyMode = enabled
+	return c
 }
 
-func (b *builder) Build() (*Config, error) {
+func (b *Config) build() (config, error) {
+	cfg := defaultWasmtimeConfig()
+
 	if b.err.Errored() {
-		return nil, b.err.Err
+		return config{}, b.err.Err
 	}
-	if b.defaultCache {
-		err := b.cfg.CacheConfigLoadDefault()
+
+	if b.enableDefaultCache {
+		err := cfg.CacheConfigLoadDefault()
 		if err != nil {
-			return nil, err
+			return config{}, err
 		}
 	}
 
-	if b.limitMaxMemory == 0 {
+	if b.limitMaxMemory > 0 {
 		b.limitMaxMemory = defaultLimitMaxMemory
 	}
 
-	return &Config{
+	//lint:ignore S1002 explicit check for default value
+	if b.enableBulkMemory != defaultEnableBulkMemory {
+		cfg.SetWasmBulkMemory(b.enableBulkMemory)
+	}
+
+	//lint:ignore S1002 explicit check for default value
+	if b.enableWasmMultiValue != defaultMultiValue {
+		cfg.SetWasmMultiValue(b.enableWasmMultiValue)
+	}
+
+	//lint:ignore S1002 explicit check for default value
+	if b.enableWasmReferenceTypes != defaultEnableReferenceTypes { //nolint:ignore S1002
+		cfg.SetWasmReferenceTypes(b.enableWasmReferenceTypes)
+	}
+
+	//lint:ignore S1002 explicit check for default value
+	if b.enableWasmSIMD != defaultSIMD {
+		cfg.SetWasmSIMD(b.enableWasmSIMD)
+	}
+
+	if b.profilingStrategy != defaultProfilingStrategy {
+		cfg.SetProfiler(b.profilingStrategy)
+	}
+
+	if b.maxWasmStack > 0 {
+		cfg.SetMaxWasmStack(b.maxWasmStack)
+	}
+
+	return config{
 		// engine config
-		engine: b.cfg,
+		engine: cfg,
 
 		// limits
 		limitMaxTableElements: defaultLimitMaxTableElements,
@@ -205,13 +244,13 @@ func (b *builder) Build() (*Config, error) {
 		// runtime config
 		compileStrategy: b.compileStrategy,
 		meterMaxUnits:   b.meterMaxUnits,
-		testingOnlyMode: b.testingOnlyMode,
+		testingOnlyMode: b.enableTestingOnlyMode,
 	}, nil
 }
 
-// non-configurable defaults
 func defaultWasmtimeConfig() *wasmtime.Config {
 	cfg := wasmtime.NewConfig()
+
 	// non configurable defaults
 	cfg.SetCraneliftOptLevel(defaultCraneliftOptLevel)
 	cfg.SetConsumeFuel(defaultFuelMetering)
@@ -232,6 +271,6 @@ func defaultWasmtimeConfig() *wasmtime.Config {
 	cfg.SetWasmBulkMemory(defaultEnableBulkMemory)
 	cfg.SetWasmReferenceTypes(defaultEnableReferenceTypes)
 	cfg.SetWasmMultiValue(defaultMultiValue)
-	cfg.SetProfiler(defaultProfiler)
+	cfg.SetProfiler(defaultProfilingStrategy)
 	return cfg
 }

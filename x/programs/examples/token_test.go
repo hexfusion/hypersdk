@@ -24,7 +24,7 @@ var (
 	log = logging.NewLogger(
 		"",
 		logging.NewWrappedCore(
-			logging.Info,
+			logging.Debug,
 			os.Stderr,
 			logging.Plain.ConsoleEncoder(),
 		))
@@ -67,10 +67,8 @@ func BenchmarkTokenProgram(b *testing.B) {
 		}
 	})
 
-	cfg, err := runtime.NewConfigBuilder(maxUnits).
-		WithLimitMaxMemory(18 * runtime.MemoryPageSize). // 18 pages
-		Build()
-	require.NoError(err)
+	cfg := runtime.NewConfig(maxUnits).
+		WithLimitMaxMemory(18 * runtime.MemoryPageSize) // 18 pages
 	preCompiledTokenProgramBytes, err := runtime.PreCompileWasmBytes(tokenProgramBytes, cfg)
 	require.NoError(err)
 
@@ -100,14 +98,10 @@ func BenchmarkTokenProgram(b *testing.B) {
 
 func newTokenProgram(maxUnits uint64, strategy runtime.EngineCompileStrategy, programBytes []byte) (*Token, error) {
 	// configs can only be used once
-	cfg, err := runtime.NewConfigBuilder(maxUnits).
+	cfg := runtime.NewConfig(maxUnits).
 		WithLimitMaxMemory(18 * runtime.MemoryPageSize). // 18 pages
 		WithCompileStrategy(strategy).
-		WithDefaultCache(true).
-		Build()
-	if err != nil {
-		return nil, err
-	}
+		WithDefaultCache(true)
 	db := newTestDB()
 
 	// define imports

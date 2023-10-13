@@ -48,13 +48,18 @@ func (r *WasmRuntime) Initialize(ctx context.Context, programBytes []byte) (err 
 		r.Stop()
 	}(ctx)
 
-	r.store = wasmtime.NewStore(wasmtime.NewEngineWithConfig(r.cfg.engine))
+	cfg, err := r.cfg.build()
+	if err != nil {
+		return err
+	}
+
+	r.store = wasmtime.NewStore(wasmtime.NewEngineWithConfig(cfg.engine))
 	r.store.Limiter(
-		r.cfg.limitMaxMemory,
-		r.cfg.limitMaxTableElements,
-		r.cfg.limitMaxInstances,
-		r.cfg.limitMaxTables,
-		r.cfg.limitMaxMemories,
+		cfg.limitMaxMemory,
+		cfg.limitMaxTableElements,
+		cfg.limitMaxInstances,
+		cfg.limitMaxTables,
+		cfg.limitMaxMemories,
 	)
 
 	// set initial epoch deadline
@@ -83,8 +88,7 @@ func (r *WasmRuntime) Initialize(ctx context.Context, programBytes []byte) (err 
 
 	link := Link{wasmtime.NewLinker(r.store.Engine)}
 
-	if r.cfg.testingOnlyMode {
-		// setup wasi for debugging
+	if cfg.testingOnlyMode {
 		wasiConfig := wasmtime.NewWasiConfig()
 		wasiConfig.InheritStderr()
 		wasiConfig.InheritStdout()
@@ -210,13 +214,17 @@ func (r *WasmRuntime) Stop() {
 // Note: these bytes can be deserialized by an `Engine` that has the same version.
 // For that reason precompiled wasm modules should not be stored on chain.
 func PreCompileWasmBytes(programBytes []byte, cfg *Config) ([]byte, error) {
-	store := wasmtime.NewStore(wasmtime.NewEngineWithConfig(cfg.engine))
+	rcfg, err := cfg.build()
+	if err != nil {
+		return nil, err
+	}
+	store := wasmtime.NewStore(wasmtime.NewEngineWithConfig(rcfg.engine))
 	store.Limiter(
-		cfg.limitMaxMemory,
-		cfg.limitMaxTableElements,
-		cfg.limitMaxInstances,
-		cfg.limitMaxTables,
-		cfg.limitMaxMemories,
+		rcfg.limitMaxMemory,
+		rcfg.limitMaxTableElements,
+		rcfg.limitMaxInstances,
+		rcfg.limitMaxTables,
+		rcfg.limitMaxMemories,
 	)
 
 	module, err := wasmtime.NewModule(store.Engine, programBytes)

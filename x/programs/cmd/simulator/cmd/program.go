@@ -30,7 +30,7 @@ const (
 )
 
 var (
-	programID ids.ID
+	parentID ids.ID
 )
 
 type Program struct {
@@ -136,7 +136,7 @@ func deployCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "deploy [path] --key [key name]",
 		Short: "Deploy a HyperSDK program",
-		RunE:  func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			exists, err := hasKey(cmd.Context(), db, keyName)
 			if !exists {
 				return fmt.Errorf("%w: %s", ErrNamedKeyNotFound, keyName)
@@ -151,26 +151,22 @@ func deployCmd() *cobra.Command {
 				return err
 			}
 
+			// only commit to state if the call is successful
+			err = db.Commit(cmd.Context())
+			if err != nil {
+				return err
+			}
+
 			utils.Outf("{{green}}deploy transaction successful: {{/}}%s\n", programID.String())
 			return nil
 		},
-		Args:  cobra.MinimumNArgs(1),
+		Args: cobra.MinimumNArgs(1),
 	}
 
 	cmd.PersistentFlags().StringVarP(&keyName, "key", "k", "", "name of the key to use to deploy the program")
 	cmd.MarkPersistentFlagRequired("key")
 
 	return cmd
-}
-
-func deploy(cmd *cobra.Command, args []string) error {
-	programPath := args[0]
-	programID, err := deployProgram(cmd.Context(), programPath)
-	if err != nil {
-		return err
-	}
-	utils.Outf("{{green}}deploy transaction successful: {{/}}%s\n", programID.String())
-	return nil
 }
 
 func runSteps(cmd *cobra.Command, args []string) error {
@@ -219,11 +215,11 @@ func runSteps(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("%w: %s", ErrProgramPathRequired, step.Name)
 			}
 			var err error
-			programID, err = deployProgram(cmd.Context(), step.ProgramPath)
+			parentID, err = deployProgram(cmd.Context(), step.ProgramPath)
 			if err != nil {
 				return err
 			}
-			utils.Outf("{{green}}deploy transaction successful: {{/}}%s\n\n", programID.String())
+			utils.Outf("{{green}}deploy transaction successful: {{/}}%s\n\n", parentID.String())
 		case "call":
 			id, resp, balance, err := callProgram(cmd.Context(), &step, &p.Config)
 			if err != nil {
@@ -259,7 +255,7 @@ func deployProgram(ctx context.Context, path string) (ids.ID, error) {
 		return ids.Empty, err
 	}
 	// simulate create program transaction
-	programID, err = generateRandomID()
+	programID, err := generateRandomID()
 	if err != nil {
 		return ids.Empty, err
 	}
@@ -274,22 +270,21 @@ func deployProgram(ctx context.Context, path string) (ids.ID, error) {
 
 func callProgram(ctx context.Context, step *Step, config *Config) (ids.ID, uint64, uint64, error) {
 	// get program ID from deploy step if set to inherit
-	var programIDBytes = make([]byte, 32)
+	var programID ids.ID
 	if step.ProgramID == inheritIDKey {
-		copy(programIDBytes, programID[:])
+		programID = parentID
 	} else {
-		copy(programIDBytes, []byte(step.ProgramID))
-	}
-
-	programID, err := ids.ToID(programIDBytes)
-	if err != nil {
-		return ids.Empty, 0, 0, err
+		stepID, err := ids.FromString(step.ProgramID)
+		if err != nil {
+			return ids.Empty, 0, 0, err
+		}
+		programID = stepID
 	}
 
 	// get program bytes from disk
 	programBytes, ok, err := getProgram(ctx, db, programID)
 	if !ok {
-		return ids.Empty, 0, 0, fmt.Errorf("%w: %s", ErrProgramNotFound, programID)
+		return ids.Empty, 0, 0, fmt.Errorf("%w: %s", ErrProgramNotFound, programID.String())
 	}
 	if err != nil {
 		return ids.Empty, 0, 0, err
@@ -387,7 +382,7 @@ func createParams(ctx context.Context, programID ids.ID, memory runtime.Memory, 
 			if !ok {
 				return nil, fmt.Errorf("%w: %s", ErrFailedParamTypeCast, param.Type)
 			}
-			id, err := ids.ToID([]byte(val))
+			id, err := ids.FromString(val)
 			if err != nil {
 				return nil, err
 			}

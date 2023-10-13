@@ -29,13 +29,15 @@ type Import struct {
 	imports    runtime.SupportedImports
 	meter      runtime.Meter
 	registered bool
+	cfg        *runtime.Config
 }
 
 // New returns a new program invoke host module which can perform program to program calls.
-func New(log logging.Logger, db state.Mutable) *Import {
+func New(log logging.Logger, db state.Mutable, cfg *runtime.Config) *Import {
 	return &Import{
 		db:  db,
 		log: log,
+		cfg: cfg,
 	}
 }
 
@@ -98,19 +100,11 @@ func (i *Import) callProgramFn(
 		return -1
 	}
 
-	// initialize a new runtime config with zero balance
-	cfg, err := runtime.NewConfigBuilder(runtime.NoUnits).
-		WithLimitMaxMemory(18 * runtime.MemoryPageSize). // 18 pages
-		Build()
-	if err != nil {
-		i.log.Error("failed to create runtime config",
-			zap.Error(err),
-		)
-		return -1
-	}
+	// ensure the program cfg is set to zero balance.
+	i.cfg.ResetUnits()
 
 	// create a new runtime for the program to be invoked
-	rt := runtime.New(i.log, cfg, i.imports)
+	rt := runtime.New(i.log, i.cfg, i.imports)
 	err = rt.Initialize(context.Background(), programWasmBytes)
 	if err != nil {
 		i.log.Error("failed to initialize runtime",

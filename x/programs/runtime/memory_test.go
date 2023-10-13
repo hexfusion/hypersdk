@@ -39,10 +39,8 @@ func TestLimitMaxMemory(t *testing.T) {
 
 	// wasm defines 2 pages of memory but runtime set max 1 page
 	maxFee := uint64(1)
-	cfg, err := NewConfigBuilder(maxFee).
-		WithLimitMaxMemory(1 * MemoryPageSize). // 1 page
-		Build()
-	require.NoError(err)
+	cfg := NewConfig(maxFee).
+		WithLimitMaxMemory(1 * MemoryPageSize) // 1 page
 	runtime := New(log, cfg, nil)
 	err = runtime.Initialize(context.Background(), wasm)
 	require.ErrorContains(err, "memory minimum size of 2 pages exceeds memory limits")
@@ -61,10 +59,8 @@ func TestLimitMaxMemoryGrow(t *testing.T) {
 	require.NoError(err)
 
 	maxFee := uint64(1)
-	cfg, err := NewConfigBuilder(maxFee).
-		WithLimitMaxMemory(1 * MemoryPageSize). // 1 page
-		Build()
-	require.NoError(err)
+	cfg := NewConfig(maxFee).
+		WithLimitMaxMemory(1 * MemoryPageSize) // 1 page
 	runtime := New(logging.NoLog{}, cfg, nil)
 	err = runtime.Initialize(context.Background(), wasm)
 	require.NoError(err)
@@ -91,9 +87,8 @@ func TestWriteExceedsLimitMaxMemory(t *testing.T) {
 	require.NoError(err)
 
 	maxFee := uint64(1)
-	cfg, err := NewConfigBuilder(maxFee).
-		WithLimitMaxMemory(1 * MemoryPageSize). // 1 pages
-		Build()
+	cfg := NewConfig(maxFee).
+		WithLimitMaxMemory(1 * MemoryPageSize) // 1 pages
 	require.NoError(err)
 	runtime := New(logging.NoLog{}, cfg, nil)
 	err = runtime.Initialize(context.Background(), wasm)
@@ -121,9 +116,8 @@ func TestWithMaxWasmStack(t *testing.T) {
 	require.NoError(err)
 
 	maxFee := uint64(4)
-	cfg, err := NewConfigBuilder(maxFee).
-		WithMaxWasmStack(660).
-		Build()
+	cfg := NewConfig(maxFee).
+		WithMaxWasmStack(660)
 	require.NoError(err)
 	runtime := New(logging.NoLog{}, cfg, nil)
 	err = runtime.Initialize(context.Background(), wasm)
@@ -132,9 +126,8 @@ func TestWithMaxWasmStack(t *testing.T) {
 	require.NoError(err)
 
 	// stack is ok for 1 call.
-	cfg, err = NewConfigBuilder(maxFee).
-		WithMaxWasmStack(500).
-		Build()
+	cfg = NewConfig(maxFee).
+		WithMaxWasmStack(500)
 	require.NoError(err)
 	runtime = New(logging.NoLog{}, cfg, nil)
 	err = runtime.Initialize(context.Background(), wasm)

@@ -198,7 +198,7 @@ func (b *Config) build() (config, error) {
 		}
 	}
 
-	if b.limitMaxMemory > 0 {
+	if b.limitMaxMemory == 0 {
 		b.limitMaxMemory = defaultLimitMaxMemory
 	}
 

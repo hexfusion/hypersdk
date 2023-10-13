@@ -115,6 +115,7 @@ func newProgramCmd() *cobra.Command {
 	// add subcommands
 	cmd.AddCommand(
 		runCmd(),
+		deployCmd(),
 	)
 	return cmd
 }
@@ -128,6 +129,48 @@ func runCmd() *cobra.Command {
 	}
 
 	return cmd
+}
+
+func deployCmd() *cobra.Command {
+	var keyName string
+	cmd := &cobra.Command{
+		Use:   "deploy [path] --key [key name]",
+		Short: "Deploy a HyperSDK program",
+		RunE:  func(cmd *cobra.Command, args []string) error {
+			exists, err := hasKey(cmd.Context(), db, keyName)
+			if !exists {
+				return fmt.Errorf("%w: %s", ErrNamedKeyNotFound, keyName)
+			}
+			if err != nil {
+				return err
+			}
+
+			programPath := args[0]
+			programID, err := deployProgram(cmd.Context(), programPath)
+			if err != nil {
+				return err
+			}
+
+			utils.Outf("{{green}}deploy transaction successful: {{/}}%s\n", programID.String())
+			return nil
+		},
+		Args:  cobra.MinimumNArgs(1),
+	}
+
+	cmd.PersistentFlags().StringVarP(&keyName, "key", "k", "", "name of the key to use to deploy the program")
+	cmd.MarkPersistentFlagRequired("key")
+
+	return cmd
+}
+
+func deploy(cmd *cobra.Command, args []string) error {
+	programPath := args[0]
+	programID, err := deployProgram(cmd.Context(), programPath)
+	if err != nil {
+		return err
+	}
+	utils.Outf("{{green}}deploy transaction successful: {{/}}%s\n", programID.String())
+	return nil
 }
 
 func runSteps(cmd *cobra.Command, args []string) error {
@@ -176,7 +219,7 @@ func runSteps(cmd *cobra.Command, args []string) error {
 				return fmt.Errorf("%w: %s", ErrProgramPathRequired, step.Name)
 			}
 			var err error
-			programID, err = deployProgram(cmd.Context(), &step)
+			programID, err = deployProgram(cmd.Context(), step.ProgramPath)
 			if err != nil {
 				return err
 			}
@@ -210,8 +253,8 @@ func runSteps(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func deployProgram(ctx context.Context, step *Step) (ids.ID, error) {
-	programBytes, err := os.ReadFile(step.ProgramPath)
+func deployProgram(ctx context.Context, path string) (ids.ID, error) {
+	programBytes, err := os.ReadFile(path)
 	if err != nil {
 		return ids.Empty, err
 	}

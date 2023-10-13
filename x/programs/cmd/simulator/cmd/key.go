@@ -51,7 +51,7 @@ func newKey(ctx context.Context, db *state.SimpleMutable, name string) error {
 		return err
 	}
 
-	_, ok, err := getPublicKey(ctx, db, name)
+	ok, err := hasKey(ctx, db, name)
 	if ok {
 		return fmt.Errorf("%w: %s", ErrDuplicateKeyName, name)
 	}
@@ -64,4 +64,9 @@ func newKey(ctx context.Context, db *state.SimpleMutable, name string) error {
 	}
 
 	return db.Commit(ctx)
+}
+
+func hasKey(ctx context.Context, db state.Immutable, name string) (bool, error) {
+	_, ok, err := getPublicKey(ctx, db, name)
+	return ok, err
 }

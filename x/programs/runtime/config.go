@@ -18,7 +18,7 @@ const (
 	defaultFuelMetering                 = true
 	defaultWasmMultiMemory              = false
 	defaultWasmMemory64                 = false
-	defaultLimitMaxMemory               = 16 * 64 * 1024 // 16 pages
+	defaultLimitMaxMemory               = 18 * 64 * 1024 // 18 pages
 	defaultSIMD                         = false
 	defaultCompilerStrategy             = wasmtime.StrategyCranelift
 	defaultEpochInterruption            = true
@@ -205,6 +205,7 @@ func (b *builder) Build() (*Config, error) {
 		// runtime config
 		compileStrategy: b.compileStrategy,
 		meterMaxUnits:   b.meterMaxUnits,
+		testingOnlyMode: b.testingOnlyMode,
 	}, nil
 }
 

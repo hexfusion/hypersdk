@@ -10,6 +10,8 @@ import (
 func newConfig(step *Step, config *Config) (*runtime.Config, error) {
 	return runtime.NewConfigBuilder(step.MaxFee).
 		WithEnableTestingOnlyMode(true).
+		// TODO: remove when non wasi-preview logging is supported
+		// ONLY required for debug logs in testing only mode.
 		WithBulkMemory(true).
 		WithLimitMaxMemory(config.MaxMemoryPages * runtime.MemoryPageSize).
 		Build()

@@ -5,21 +5,13 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
 
-	"github.com/ava-labs/avalanchego/database"
-
 	"github.com/ava-labs/hypersdk/crypto/ed25519"
 	"github.com/ava-labs/hypersdk/state"
 	"github.com/ava-labs/hypersdk/utils"
-)
-
-const (
-	// keyPrefix that stores pub key -> private key mapping
-	keyPrefix = 0x1
 )
 
 func newKeyCmd() *cobra.Command {
@@ -72,26 +64,4 @@ func newKey(ctx context.Context, db *state.SimpleMutable, name string) error {
 	}
 
 	return db.Commit(ctx)
-}
-
-// gets the public key mapped to the given name.
-func getPublicKey(ctx context.Context, db state.Immutable, name string) (ed25519.PublicKey, bool, error) {
-	k := make([]byte, 1+ed25519.PublicKeyLen)
-	k[0] = keyPrefix
-	copy(k[1:], []byte(name))
-	v, err := db.GetValue(ctx, k)
-	if errors.Is(err, database.ErrNotFound) {
-		return ed25519.EmptyPublicKey, false, nil
-	}
-	if err != nil {
-		return ed25519.EmptyPublicKey, false, err
-	}
-	return ed25519.PublicKey(v), true, nil
-}
-
-func setKey(ctx context.Context, db state.Mutable, privateKey ed25519.PrivateKey, name string) error {
-	k := make([]byte, 1+ed25519.PublicKeyLen)
-	k[0] = keyPrefix
-	copy(k[1:], []byte(name))
-	return db.Insert(ctx, k, privateKey[:])
 }

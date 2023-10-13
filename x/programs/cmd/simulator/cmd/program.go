@@ -22,7 +22,6 @@ import (
 	"github.com/ava-labs/hypersdk/utils"
 	"github.com/ava-labs/hypersdk/x/programs/examples/imports/program"
 	"github.com/ava-labs/hypersdk/x/programs/examples/imports/pstate"
-	"github.com/ava-labs/hypersdk/x/programs/examples/storage"
 	"github.com/ava-labs/hypersdk/x/programs/runtime"
 )
 
@@ -155,7 +154,11 @@ func runSteps(cmd *cobra.Command, args []string) error {
 
 	utils.Outf("{{green}}simulating: {{/}}%s\n\n", p.Name)
 
-	for _, step := range p.Steps {
+	for i, step := range p.Steps {
+		utils.Outf("{{yellow}}step: {{/}}%d\n", i)
+		if step.Description != "" {
+			utils.Outf("{{yellow}}description: {{/}}%s\n", step.Description)
+		}
 		switch step.Name {
 		case "create_key":
 			if step.KeyName == "" {
@@ -167,6 +170,7 @@ func runSteps(cmd *cobra.Command, args []string) error {
 			} else if err != nil {
 				return err
 			}
+			utils.Outf("{{green}}key creation successful: {{/}}%s\n\n", step.KeyName)
 		case "deploy":
 			if step.ProgramPath == "" {
 				return fmt.Errorf("%w: %s", ErrProgramPathRequired, step.Name)
@@ -176,13 +180,12 @@ func runSteps(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return err
 			}
-			utils.Outf("{{green}}deploy transaction successful: {{/}} %v\n\n", programID.String())
+			utils.Outf("{{green}}deploy transaction successful: {{/}}%s\n\n", programID.String())
 		case "call":
 			id, resp, balance, err := callProgram(cmd.Context(), &step, &p.Config)
 			if err != nil {
 				return err
 			}
-			utils.Outf("{{yellow}}description: {{/}}%s\n", step.Description)
 			utils.Outf("{{yellow}}function: {{/}}%s\n", step.Function)
 			utils.Outf("{{yellow}}params: {{/}}%v\n", step.Params)
 			utils.Outf("{{yellow}}max fee: {{/}}%v\n", step.MaxFee)
@@ -198,7 +201,7 @@ func runSteps(cmd *cobra.Command, args []string) error {
 				}
 			}
 			utils.Outf("{{blue}}response: {{/}}%d\n", resp)
-			utils.Outf("{{green}}call transaction successful: {{/}} %s\n", id.String())
+			utils.Outf("{{green}}call transaction successful: {{/}}%s\n\n", id.String())
 		default:
 			return fmt.Errorf("%w: %s", ErrInvalidStep, step.Name)
 		}
@@ -218,7 +221,7 @@ func deployProgram(ctx context.Context, step *Step) (ids.ID, error) {
 		return ids.Empty, err
 	}
 	// store the program to disk
-	err = storage.SetProgram(ctx, db, programID, programBytes)
+	err = setProgram(ctx, db, programID, programBytes)
 	if err != nil {
 		return ids.Empty, err
 	}
@@ -241,7 +244,7 @@ func callProgram(ctx context.Context, step *Step, config *Config) (ids.ID, uint6
 	}
 
 	// get program bytes from disk
-	programBytes, ok, err := storage.GetProgram(ctx, db, programID)
+	programBytes, ok, err := getProgram(ctx, db, programID)
 	if !ok {
 		return ids.Empty, 0, 0, fmt.Errorf("%w: %s", ErrProgramNotFound, programID)
 	}

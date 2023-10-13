@@ -25,7 +25,3 @@ located in the `testdata/` directory.
 
 Currently the simulator supports the `program` and `pstate` modules found in the
 examples/imports directory.
-
-
-
-

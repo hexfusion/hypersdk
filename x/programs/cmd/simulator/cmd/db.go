@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/ava-labs/avalanchego/trace"
+	"github.com/ava-labs/avalanchego/utils/units"
 	"github.com/ava-labs/avalanchego/x/merkledb"
 
 	"github.com/ava-labs/hypersdk/pebble"
@@ -14,16 +15,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-const (
-	maxKeyValuesLimit      = 2048
-	defaultRequestKeyLimit = maxKeyValuesLimit
-)
-
 var defaultDBConfig = merkledb.Config{
+	BranchFactor:              merkledb.BranchFactor16,
 	EvictionBatchSize:         100,
-	HistoryLength:             defaultRequestKeyLimit,
-	ValueNodeCacheSize:        defaultRequestKeyLimit,
-	IntermediateNodeCacheSize: defaultRequestKeyLimit,
+	HistoryLength:             2048,
+	ValueNodeCacheSize:        2 * units.GiB,
+	IntermediateNodeCacheSize: 2 * units.GiB,
 	Reg:                       prometheus.NewRegistry(),
 	Tracer:                    trace.Noop,
 }

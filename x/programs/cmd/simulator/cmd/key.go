@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/ava-labs/hypersdk/cli"
 	"github.com/ava-labs/hypersdk/crypto/ed25519"
 	"github.com/ava-labs/hypersdk/state"
 	"github.com/ava-labs/hypersdk/utils"
@@ -29,12 +30,14 @@ func newCreateKeyCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "create [name]",
 		Short: "Creates a new named private key and stores it in the database",
-		RunE:  createKey,
+		RunE:  func(cmd *cobra.Command, args []string) error {
+			
+		}
 		Args:  cobra.MinimumNArgs(1),
 	}
 }
 
-func createKey(cmd *cobra.Command, args []string) error {
+func createKeys(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	err := newKey(cmd.Context(), db, name)
 	if err != nil {
@@ -45,12 +48,11 @@ func createKey(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func newKey(ctx context.Context, db *state.SimpleMutable, name string) error {
+func createKey(ctx context.Context, db *state.SimpleMutable, name string) error {
 	priv, err := ed25519.GeneratePrivateKey()
 	if err != nil {
 		return err
 	}
-
 	ok, err := hasKey(ctx, db, name)
 	if ok {
 		return fmt.Errorf("%w: %s", ErrDuplicateKeyName, name)
@@ -62,6 +64,7 @@ func newKey(ctx context.Context, db *state.SimpleMutable, name string) error {
 	if err != nil {
 		return err
 	}
+
 
 	return db.Commit(ctx)
 }

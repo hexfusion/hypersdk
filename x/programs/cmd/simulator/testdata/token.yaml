@@ -5,45 +5,80 @@ caller_key: alice_key
 config:
   max_memory_pages: 18
 steps:
-  - name: create_key
+  - task: key
     description: create alice key
-    key_name: alice_key
-  - name: create_key
+    request:
+      method: create
+      params:
+        - name: key name
+          type: string
+          value: alice_key
+  - task: key
     description: create bob key
-    key_name: bob_key
-  - name: deploy
+    request:
+      method: create
+      params:
+        - name: key name
+          type: string
+          value: bob_key
+  - task: action
     description: deploy a new token program
-    program_path: ../../examples/testdata/token.wasm
-    max_fee: 100000
-  - name: call
-    description: init
-    function: init
-    program_id: inherit #inherit id created from deploy above
-    max_fee: 100000
-  - name: call
-    description: mint to alice
-    function: mint_to
-    program_id: inherit #inherit id created from deploy above
-    max_fee: 100000
-    params:
-      - type: key
-        value: alice_key
-      - type: uint64
-        value: 10000
-    require:
+    request:
+      method: create_program
+      params:
+        - name: program_path
+          type: string
+          value: ../../examples/testdata/token.wasm
+        - name: max_fee
+          type: uint64
+          value: 10000
+  - task: action
+    description: initialize token program
+    request:
+      method: init
+      params:
+        - name: program_id
+          type: id
+          value: action_0 #tx id created from the first action above
+        - name: max_fee
+          type: uint64
+          value: 100000
+  - task: action
+    description: mint 10000 tokens to alice
+    request:
+      method: mint_to
+      params:
+        - name: program_id
+          type: id
+          value: action_0 #tx id created from the first action above
+        - name: max_fee
+          type: uint64
+          value: 100000
+        - type: key
+          value: alice_key
+        - name: amount
+          type: uint64
+          value: 10000
+      require:
       result:
         operator: "=="
         operand: 1
-  - name : call
+  - task: call
     description: get token balance
-    function: get_total_supply
-    program_id: inherit #inherit id created from deploy above
-    max_fee: 100000
-    require:
-      result:
-        operator: "=="
-        operand: 123456789
-  - name: call
+    request:
+      method: get_total_supply
+      params:
+        - name: program_id
+          type: id
+          value: action_0 #tx id created from the first action above
+        - name: max_fee
+          type: uint64
+          value: 100000
+      require:
+        result:
+          operator: "=="
+          operand: 123456789
+  - task: call
     description: transfer 100 from alice to bob
     function: transfer
     program_id: inherit #inherit id created from deploy above
@@ -59,28 +94,38 @@ steps:
       result:
         operator: "=="
         operand: 1
-  - name: call
+  - task: call
     description: get alice token balance
-    function: get_balance
-    program_id: inherit #inherit id created from deploy above
-    max_fee: 100000
-    params:
-      - type: key
-        value: alice_key
-    require:
-      result:
-        operator: "=="
-        operand: 9900
-  - name: call
+    request:
+      method: get_balance
+      params:
+        - name: program_id
+          type: id
+          value: action_0 #tx id created from the first action above
+        - name: max_fee
+          type: uint64
+          value: 100000
+        - type: key
+          value: alice_key
+      require:
+        result:
+          operator: "=="
+          operand: 9900
+  - task: call
     description: get bob token balance
-    function: get_balance
-    program_id: inherit #inherit id created from deploy above
-    max_fee: 100000
-    params:
-      - type: key
-        value: bob_key
-    require:
-      result:
-        operator: "=="
-        operand: 100
+    request:
+      method: get_balance
+      params:
+        - name: program_id
+          type: id
+          value: action_0 #tx id created from the first action above
+        - name: max_fee
+          type: uint64
+          value: 100000
+        - type: key
+          value: bob_key
+      require:
+        result:
+          operator: "=="
+          operand: 100
 

@@ -109,26 +109,10 @@ func SendJSONRequest(
 	reply interface{},
 	options ...Option,
 ) error {
-	requestBodyBytes, err := rpc.EncodeClientRequest(method, params)
+	request, err := CreateJSONRequest(ctx, cli, uri, method, params, options...)
 	if err != nil {
-		return fmt.Errorf("failed to encode client params: %w", err)
+		return err
 	}
-
-	ops := NewOptions(options)
-	uri.RawQuery = ops.queryParams.Encode()
-
-	request, err := http.NewRequestWithContext(
-		ctx,
-		"POST",
-		uri.String(),
-		bytes.NewBuffer(requestBodyBytes),
-	)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
-	}
-
-	request.Header = ops.headers
-	request.Header.Set("Content-Type", "application/json")
 
 	resp, err := cli.Do(request)
 	if err != nil {
@@ -150,4 +134,56 @@ func SendJSONRequest(
 		return fmt.Errorf("failed to decode client response: %w %s %s", err, all, uri.String())
 	}
 	return resp.Body.Close()
+}
+
+func (e *EndpointRequester) CreateRequest(
+	ctx context.Context,
+	method string,
+	params interface{},
+	options ...Option,
+) (*http.Request, error) {
+	uri, err := url.Parse(e.uri)
+	if err != nil {
+		return nil, err
+	}
+	return CreateJSONRequest(
+		ctx,
+		e.cli,
+		uri,
+		fmt.Sprintf("%s.%s", e.base, method),
+		params,
+		options...,
+	)
+}
+
+func CreateJSONRequest(
+	ctx context.Context,
+	cli *http.Client,
+	uri *url.URL,
+	method string,
+	params interface{},
+	options ...Option,
+) (*http.Request, error) {
+	requestBodyBytes, err := rpc.EncodeClientRequest(method, params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode client params: %w", err)
+	}
+
+	ops := NewOptions(options)
+	uri.RawQuery = ops.queryParams.Encode()
+
+	request, err := http.NewRequestWithContext(
+		ctx,
+		"POST",
+		uri.String(),
+		bytes.NewBuffer(requestBodyBytes),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	request.Header = ops.headers
+	request.Header.Set("Content-Type", "application/json")
+
+	return request, nil
 }

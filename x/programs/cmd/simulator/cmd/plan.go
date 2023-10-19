@@ -7,14 +7,12 @@ import (
 	"bufio"
 	"context"
 	"crypto/rand"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/spf13/cobra"
-	"go.uber.org/zap"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
@@ -25,8 +23,6 @@ import (
 	"github.com/ava-labs/hypersdk/x/programs/examples/imports/pstate"
 	"github.com/ava-labs/hypersdk/x/programs/runtime"
 
-	"github.com/ava-labs/hypersdk/x/programs/simulator/vm/rpc"
-	"github.com/ava-labs/hypersdk/x/programs/simulator/vm/storage"
 )
 
 const ()
@@ -148,6 +144,9 @@ func (r *runCmd) Run(ctx context.Context) error {
 				// during inline program executions.
 				r.programMap[fmt.Sprintf("step_%d", i)] = id
 			case ProgramExecute:
+				if len(step.Params) < 2 {
+					return fmt.Errorf("%w: %s", ErrInvalidStep, "execute requires at least 2 params")
+				}
 				if step.Params[0].Type != ID {
 					return fmt.Errorf("%w: %s", ErrInvalidParamType, step.Params[0].Type)
 				}
@@ -155,11 +154,23 @@ func (r *runCmd) Run(ctx context.Context) error {
 				if !ok {
 					return fmt.Errorf("%w: %s", ErrFailedParamTypeCast, step.Params[0].Type)
 				}
+				if step.Params[1].Type != Uint64 {
+					return fmt.Errorf("%w: %s", ErrInvalidParamType, step.Params[1].Type)
+				}
+
 				// get program ID from params
 				programID, err := r.getProgramID(idStr)
 				if err != nil {
 					return err
 				}
+
+				// maxUnits from params
+				maxUnits, ok := step.Params[1].Value.(uint64)
+				if !ok {
+					return fmt.Errorf("%w: %s", ErrFailedParamTypeCast, step.Params[1].Type)
+				}
+
+				// TODO: get cfg from genesis
 
 				programExecuteFunc(ctx, r.db, programID, &step)
 			}
@@ -256,4 +267,12 @@ func generateRandomID() (ids.ID, error) {
 	return id, nil
 }
 
+func newSimulatorRuntimeConfig() *runtime.Config {
+	
+	cfg, err := runtime.NewConfigBuilder().
+	WithEnableTestingOnlyMode(true).
+	EnableBulkMemory(true).
+	// only required for Wasi support exposed by testing only.
+	Build()
+}
 

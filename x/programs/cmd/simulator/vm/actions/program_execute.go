@@ -7,7 +7,6 @@ import (
 	"context"
 
 	"github.com/ava-labs/avalanchego/ids"
-	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/hypersdk/chain"
 	"github.com/ava-labs/hypersdk/codec"
@@ -16,10 +15,7 @@ import (
 	"github.com/ava-labs/hypersdk/state"
 	"github.com/ava-labs/hypersdk/utils"
 
-	"github.com/ava-labs/hypersdk/x/programs/examples/imports/program"
-	"github.com/ava-labs/hypersdk/x/programs/examples/imports/pstate"
 	"github.com/ava-labs/hypersdk/x/programs/runtime"
-	"github.com/ava-labs/hypersdk/x/programs/simulator/cmd"
 	"github.com/ava-labs/hypersdk/x/programs/simulator/vm/storage"
 )
 
@@ -27,12 +23,11 @@ var _ chain.Action = (*ProgramExecute)(nil)
 
 type ProgramExecute struct {
 	ProgramID string `json:"programId"`
-	ProgramFunction string `json:"programFunction"`
+	Function string `json:"programFunction"`
 	MaxFee	uint64 `json:"maxFee"`
 	Params []uint64 `json:"arguments"`
 
-	log	logging.Logger
-	cfg 	*runtime.Config
+	runtime runtime.Runtime
 }
 
 func (*ProgramExecute) GetTypeID() uint8 {
@@ -63,12 +58,11 @@ func (t *ProgramExecute) Execute(
 	if len(t.ProgramID) == 0 {
 		return false, 1, OutputValueZero, nil, nil
 	}
-	if len(t.ProgramFunction) == 0 {
+	if len(t.Function) == 0 {
 		return false, 1, OutputValueZero, nil, nil
 	}
 
 	// TODO: take fee out of balance?
-
 	programID, err := ids.FromString(t.ProgramID)
 	if err != nil {
 		return false, 1, utils.ErrBytes(err), nil, nil
@@ -78,20 +72,14 @@ func (t *ProgramExecute) Execute(
 	if err != nil {
 		return false, 1, utils.ErrBytes(err), nil, nil
 	}
-
 	
-	defer rt.Stop()
-	err = rt.Initialize(ctx, programBytes)
+	err = t.runtime.Initialize(ctx, programBytes, t.MaxFee)
 	if err != nil {
 		return false, 1, utils.ErrBytes(err), nil, nil
 	}
+	defer t.runtime.Stop()
 
-	params, err := cmd.CreateParams(ctx, rt.Memory(), mu, t.Params)
-	if err != nil {
-		return false, 1, utils.ErrBytes(err), nil, nil
-	}
-
-	resp, err := rt.Call(ctx, t.ProgramFunction, params...)
+	resp, err := t.runtime.Call(ctx, t.Function, t.Params...)
 	if err != nil {
 		return false, 1, utils.ErrBytes(err), nil, nil
 	}
@@ -109,7 +97,7 @@ func (*ProgramExecute) Size() int {
 
 func (t *ProgramExecute) Marshal(p *codec.Packer) {
 	p.PackString(t.ProgramID)
-	p.PackString(t.ProgramFunction)
+	p.PackString(t.Function)
 	p.PackUint64(t.MaxFee)
 	p.PackUint64(uint64(len(t.Params)))
 	for _, param := range t.Params {
@@ -120,7 +108,7 @@ func (t *ProgramExecute) Marshal(p *codec.Packer) {
 func UnmarshalProgramExecute(p *codec.Packer, _ *warp.Message) (chain.Action, error) {
 	var pe ProgramExecute
 	pe.ProgramID = p.UnpackString(true)
-	pe.ProgramFunction = p.UnpackString(true)
+	pe.Function = p.UnpackString(true)
 	pe.MaxFee = p.UnpackUint64(true)
 	paramLen := p.UnpackUint64(true)
 	pe.Params = make([]uint64, paramLen)

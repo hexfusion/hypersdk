@@ -25,8 +25,8 @@ import (
 	"github.com/ava-labs/hypersdk/utils"
 	"github.com/ava-labs/hypersdk/vm"
 
-	"github.com/ava-labs/hypersdk/x/programs/simulator/vm/controller"
-	"github.com/ava-labs/hypersdk/x/programs/simulator/vm/genesis"
+	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/controller"
+	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/genesis"
 )
 
 const (

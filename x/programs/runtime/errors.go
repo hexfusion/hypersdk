@@ -14,4 +14,5 @@ var (
 	ErrInvalidParamCount            = errors.New("invalid parameter count")
 	ErrInvalidParamType             = errors.New("invalid parameter type")
 	ErrInsufficientUnits            = errors.New("insufficient units")
+	ErrRuntimeStoreSet              = errors.New("runtime store has already been set")
 )

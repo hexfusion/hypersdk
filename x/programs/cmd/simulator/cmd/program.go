@@ -19,8 +19,8 @@ import (
 	"github.com/ava-labs/hypersdk/x/programs/examples/imports/program"
 	"github.com/ava-labs/hypersdk/x/programs/examples/imports/pstate"
 	"github.com/ava-labs/hypersdk/x/programs/runtime"
-	"github.com/ava-labs/hypersdk/x/programs/simulator/vm/actions"
-	"github.com/ava-labs/hypersdk/x/programs/simulator/vm/storage"
+	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/actions"
+	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/storage"
 )
 
 func newProgramCmd(log logging.Logger, db *state.SimpleMutable) *cobra.Command {
@@ -132,7 +132,7 @@ func programCreateFunc(ctx context.Context, db *state.SimpleMutable, path string
 	return programID, nil
 }
 
-func programExecuteFunc(ctx context.Context, log logging.Logger, db *state.SimpleMutable,  cfg *runtime.Config, programID ids.ID, params []Parameter) (ids.ID, uint64, uint64, error) {
+func programExecuteFunc(ctx context.Context, log logging.Logger, db *state.SimpleMutable, cfg *runtime.Config, programID ids.ID, stepParams []Parameter, function string) (ids.ID, uint64, uint64, error) {
 	supported := runtime.NewSupportedImports()
 	supported.Register("state", func() runtime.Import {
 		return pstate.New(log, db)
@@ -142,20 +142,13 @@ func programExecuteFunc(ctx context.Context, log logging.Logger, db *state.Simpl
 	})
 
 	// create and initialize runtime
-	rt := runtime.New(log, cfg, supported.Imports())
-	programBytes, err := storage.GetProgram(ctx, db, programID)
+	rt, err := runtime.New(log, cfg, supported.Imports())
 	if err != nil {
-		return false, 1, utils.ErrBytes(err), nil, nil
-	}
-	
-	defer rt.Stop()
-	err = rt.Initialize(ctx, programBytes)
-	if err != nil {
-		return false, 1, utils.ErrBytes(err), nil, nil
+		return ids.Empty, 0, 0, err
 	}
 
-	// create params from simulation step
-	rparams, err := createParams(ctx, rt.Memory(), db, params)
+	// create params from simulation step and write objects to memory.
+	params, err := createParams(ctx, rt.Memory(), db, stepParams)
 	if err != nil {
 		return ids.Empty, 0, 0, err
 	}
@@ -169,14 +162,13 @@ func programExecuteFunc(ctx context.Context, log logging.Logger, db *state.Simpl
 	programEecuteAction := actions.ProgramExecute{
 		ProgramID: programID.String(),
 		Function:  function,
-		Params:    rparams,
-		MaxFee:    maxFee,
+		Params:    params,
 	}
 
 	// execute the action
-	success, _, _, _, err := program.Execute(ctx, nil, db, 0, nil, parentID, false)
+	success, _, _, _, err := programEecuteAction.Execute(ctx, nil, db, 0, nil, programTxID, false)
 	if !success {
-		return ids.Empty, fmt.Errorf("program creation failed: %s", err)
+		return ids.Empty, 0, 0, fmt.Errorf("program execution failed: %s", err)
 	}
 	if err != nil {
 		return ids.Empty, 0, 0, err
@@ -194,6 +186,7 @@ func programExecuteFunc(ctx context.Context, log logging.Logger, db *state.Simpl
 
 
 func createParams(ctx context.Context, memory runtime.Memory, db state.Immutable, p []Parameter) ([]uint64, error) {
+
 	// first param should always the program ID
 	params := []uint64{}
 	for _, param := range p {

@@ -1,4 +1,4 @@
-module github.com/ava-labs/hypersdk/x/programs/cmd/simulator
+module github.com/ava-labs/hypersdk/x/programs/simulator
 
 go 1.20
 
@@ -145,4 +145,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/ava-labs/hypersdk => ../../../../
+replace github.com/ava-labs/hypersdk => ../../../

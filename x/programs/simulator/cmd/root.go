@@ -20,15 +20,13 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 	avago_version "github.com/ava-labs/avalanchego/version"
 
-	"github.com/ava-labs/hypersdk/cli"
 	"github.com/ava-labs/hypersdk/pebble"
 	"github.com/ava-labs/hypersdk/state"
 	"github.com/ava-labs/hypersdk/utils"
 	"github.com/ava-labs/hypersdk/vm"
 
-	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/controller"
-	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/genesis"
-	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/rpc"
+	"github.com/ava-labs/hypersdk/x/programs/simulator/vm/controller"
+	"github.com/ava-labs/hypersdk/x/programs/simulator/vm/genesis"
 )
 
 const (
@@ -41,9 +39,9 @@ type simulator struct {
 
 	// vm used for the simulator
 	vm *vm.VM
-
-	// client used to send JSON-RPC requests to the VM
-	cli *rpc.JSONRPCClient
+	// database used to store the vm state
+	db      *state.SimpleMutable
+	genesis *genesis.Genesis
 }
 
 func NewRootCmd() *cobra.Command {
@@ -58,8 +56,8 @@ func NewRootCmd() *cobra.Command {
 
 	// add subcommands
 	cmd.AddCommand(
-		newRunCmd(s.log, s.cli),
-		newProgramCmd(s.log, s.vm.State()),
+		newRunCmd(s.log, s.db),
+		newProgramCmd(s.log, s.db),
 		newKeyCmd(),
 	)
 
@@ -71,12 +69,12 @@ func NewRootCmd() *cobra.Command {
 
 	cmd.PersistentFlags().StringVar(&s.logLevel, "log-level", "info", "log level")
 
-	// ensure vm and databases are properly closed
 	cobra.OnFinalize(func() {
 		if s.vm != nil {
+			// ensure vm and databases are properly closed
 			err := s.vm.Shutdown(cmd.Context())
 			if err != nil {
-				utils.Outf("{{red}}vm closed with error:{{/}} %s\n", err)
+				utils.Outf("{{red}}simulator vm closed with error:{{/}} %s\n", err)
 			}
 		}
 	})
@@ -89,13 +87,12 @@ func (s *simulator) Init() error {
 		return nil
 	}
 	dbPath := path.Join(homeDir, dbFolder)
-	
+
 	// TODO: allow for user defined ids.
 	nodeID := ids.GenerateTestNodeID()
 	networkID := uint32(1)
 	subnetID := ids.GenerateTestID()
 	chainID := ids.GenerateTestID()
-	app := &appSender{}
 
 	loggingConfig := logging.Config{}
 	loggingConfig.LogLevel, err = logging.ToLevel(s.logLevel)
@@ -152,17 +149,19 @@ func (s *simulator) Init() error {
 		nil,
 		toEngine,
 		nil,
-		app,
+		nil,
 	)
 	if err != nil {
 		return nil
 	}
+	s.vm = vm
 
-	s.handlers, err = vm.CreateHandlers(context.Background())
+	stateDB, err := s.vm.State()
 	if err != nil {
-		return nil
+		return err
 	}
-
+	s.db = state.NewSimpleMutable(stateDB)
+	s.genesis = genesis.Default()
 
 	return nil
 }

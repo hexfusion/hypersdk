@@ -65,7 +65,6 @@ func createKey(ctx context.Context, db *state.SimpleMutable, name string) error 
 		return err
 	}
 
-
 	return db.Commit(ctx)
 }
 

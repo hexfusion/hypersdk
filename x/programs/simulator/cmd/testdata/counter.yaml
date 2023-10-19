@@ -1,0 +1,67 @@
+# program_to_program.yaml
+name: program to program
+description: Call one counter from another
+caller_key: my_key
+steps:
+  - name : call
+    description: create a counter for alice on counter 1
+    function: initialize_address
+    program_id: 25Kr1LdwvvmnXe4FsKsdfXE1YRjpAe6TKc2T7BzuBrGGd4s9e9
+    max_fee: 100000
+    params:
+      - type: key
+        value: alice_key
+  - name : call
+    description: create a counter for alice on counter 2
+    function: initialize_address
+    program_id: xAzyn75pjY5iPrN9k62yte9srpNx1saULHFg25vze5XjNgxKY
+    max_fee: 100000
+    params:
+      - type: key
+        value: alice_key
+  - name : call
+    description: increment counter 1 for alice by 10
+    function: inc
+    program_id: 25Kr1LdwvvmnXe4FsKsdfXE1YRjpAe6TKc2T7BzuBrGGd4s9e9
+    max_fee: 100000
+    params:
+      - type: key
+        value: alice_key
+      - type: uint64
+        value: 10
+  - name : call
+    description: increment counter 2 for alice by 100
+    function: inc
+    program_id: xAzyn75pjY5iPrN9k62yte9srpNx1saULHFg25vze5XjNgxKY
+    max_fee: 100000
+    params:
+      - type: key
+        value: alice_key
+      - type: uint64
+        value: 100
+  - name : call
+    description: call inc from program 1 to program 2
+    function: inc_external
+    program_id: 25Kr1LdwvvmnXe4FsKsdfXE1YRjpAe6TKc2T7BzuBrGGd4s9e9
+    max_fee: 100000
+    params:
+      - type: id
+        value: xAzyn75pjY5iPrN9k62yte9srpNx1saULHFg25vze5XjNgxKY
+      - type: uint64
+        value: 20000
+      - type: key
+        value: alice_key
+      - type: uint64
+        value: 10
+  - name : call
+    description: get value of counter for alice on program 2
+    function: get_value
+    program_id: xAzyn75pjY5iPrN9k62yte9srpNx1saULHFg25vze5XjNgxKY
+    max_fee: 100000
+    params:
+      - type: key
+        value: alice_key
+    require:
+      result:
+        operator: "=="
+        operand: 110

@@ -19,8 +19,8 @@ var (
 	ErrKeyNameRequired        = errors.New("key name required for this step")
 
 	// Steps
-	ErrInvalidStep = errors.New("invalid step")
-	ErrInvalidTask = errors.New("invalid task")
-
+	ErrInvalidStep           = errors.New("invalid step")
+	ErrInvalidTask           = errors.New("invalid task")
+	ErrInvalidPlan           = errors.New("invalid plan")
 	ErrConfigMissingRequired = errors.New("missing required field")
 )

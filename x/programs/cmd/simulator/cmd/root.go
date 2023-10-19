@@ -6,6 +6,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path"
 
@@ -45,20 +46,23 @@ type simulator struct {
 }
 
 func NewRootCmd() *cobra.Command {
-	s := &simulator{}
+	s := &simulator{logLevel: "debug"}
 	cmd := &cobra.Command{
 		Use:   "simulator",
 		Short: "HyperSDK program VM simulator",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return s.Init()
-		},
+	}
+
+	err := s.Init()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
 
 	// add subcommands
 	cmd.AddCommand(
 		newRunCmd(s.log, s.db),
 		newProgramCmd(s.log, s.db),
-		newKeyCmd(),
+		newKeyCmd(s.log, s.db),
 	)
 
 	cobra.EnablePrefixMatching = true
@@ -96,8 +100,11 @@ func (s *simulator) Init() error {
 
 	loggingConfig := logging.Config{}
 	loggingConfig.LogLevel, err = logging.ToLevel(s.logLevel)
+	if err != nil {
+		return err
+	}
 	logFactory := logging.NewFactory(loggingConfig)
-	log, err := logFactory.Make(nodeID.String())
+	s.log, err = logFactory.Make(nodeID.String())
 	if err != nil {
 		logFactory.Close()
 		return nil
@@ -132,7 +139,7 @@ func (s *simulator) Init() error {
 		SubnetID:     subnetID,
 		ChainID:      chainID,
 		NodeID:       nodeID,
-		Log:          log,
+		Log:          logging.NoLog{},
 		ChainDataDir: dbPath,
 		Metrics:      metrics.NewOptionalGatherer(),
 		PublicKey:    bls.PublicFromSecretKey(sk),
@@ -152,9 +159,10 @@ func (s *simulator) Init() error {
 		nil,
 	)
 	if err != nil {
-		return nil
+		return err
 	}
 	s.vm = vm
+	s.vm.ForceReady()
 
 	stateDB, err := s.vm.State()
 	if err != nil {

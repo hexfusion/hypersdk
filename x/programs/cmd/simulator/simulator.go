@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/ava-labs/hypersdk/utils"
-	"github.com/ava-labs/hypersdk/x/programs/simulator/cmd"
+	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/cmd"
 )
 
 func main() {

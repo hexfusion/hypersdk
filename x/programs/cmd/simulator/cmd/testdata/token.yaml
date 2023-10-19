@@ -28,8 +28,7 @@ steps:
       params:
         - name: program_path
           type: string
-          value: ../../examples/testdata/token.wasm
-        - name: max_fee
+          value:          - name: max_fee
           type: uint64
           value: 10000
   - task: action

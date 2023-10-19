@@ -13,16 +13,14 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 
 	"github.com/ava-labs/hypersdk/state"
 	"github.com/ava-labs/hypersdk/utils"
-	"github.com/ava-labs/hypersdk/x/programs/examples/imports/program"
-	"github.com/ava-labs/hypersdk/x/programs/examples/imports/pstate"
 	"github.com/ava-labs/hypersdk/x/programs/runtime"
-
 )
 
 const ()
@@ -108,134 +106,137 @@ func (r *runCmd) Verify() error {
 }
 
 func (r *runCmd) Run(ctx context.Context) error {
-	utils.Outf("{{green}}simulating: {{/}}%s\n\n", o.plan.Name)
+	r.log.Debug("simulation",
+		zap.String("plan", r.plan.Name),
+	)
 
 	for i, step := range r.plan.Steps {
-		utils.Outf("{{yellow}}step: {{/}}%d\n", i)
-		utils.Outf("{{yellow}}description: {{/}}%s\n", step.Description)
+		r.log.Debug("simulation",
+			zap.Int("step", i),
+			zap.String("description", step.Description),
+		)
 
 		switch step.Endpoint {
 		case KeyEndpoint:
+			utils.Outf("{{red}} key:{{/}} %d\n", i)
+			resp := Response{
+				ID: i,
+			}
 			keyName, ok := step.Params[0].Value.(string)
 			if !ok {
-				return fmt.Errorf("%w: %s", ErrFailedParamTypeCast, step.Params[0].Type)
+				resp.Error = fmt.Sprintf("%w: %s", ErrFailedParamTypeCast, step.Params[0].Type)
+				return nil
 			}
 
-			err := createKey(ctx, r.db, keyName)
+			err := keyCreateFunc(ctx, r.db, keyName)
 			if errors.Is(err, ErrDuplicateKeyName) {
 				r.log.Debug("key already exists")
 			} else if err != nil {
-				return err
+				resp.Error = err.Error()
+				return nil
 			}
-			utils.Outf("{{green}}key creation successful: {{/}}%s\n\n", keyName)
-		case ExecuteEndpoint:
+			resp.Result = Result{
+				Msg: fmt.Sprintf("created key %s", keyName),
+			}
+			resp.Print()
+		case ExecuteEndpoint, ReadOnlyEndpoint: // for now the logic is the same for both
+			utils.Outf("{{red}} endpoint:{{/}} %s\n", step.Endpoint)
+			utils.Outf("{{red}} method:{{/}} %s\n", step.Method)
+
 			switch step.Method {
 			case ProgramCreate:
+				utils.Outf("{{red program create")
+				resp := Response{
+					ID: i,
+				}
+				defer resp.Print()
 				// get program path from params
 				programPath, ok := step.Params[0].Value.(string)
 				if !ok {
-					return fmt.Errorf("%w: %s", ErrFailedParamTypeCast, step.Params[0].Type)
+					resp.Error = fmt.Sprintf("%x: %s", ErrFailedParamTypeCast.Error(), step.Params[0].Type)
+					return nil
 				}
 				id, err := programCreateFunc(ctx, r.db, programPath)
 				if err != nil {
-					return err
+					resp.Error = err.Error()
+					return nil
 				}
 				// create a mapping from the step id to the program id for use
 				// during inline program executions.
 				r.programMap[fmt.Sprintf("step_%d", i)] = id
-			case ProgramExecute:
+				resp.Result = Result{
+					ID: id.String(),
+				}
+				resp.Print()
+			default:
+				utils.Outf("{{red}} program call default{{/}} %s\n", step.Method)
+				resp := Response{
+					ID: i,
+				}
+				defer resp.Print()
 				if len(step.Params) < 2 {
-					return fmt.Errorf("%w: %s", ErrInvalidStep, "execute requires at least 2 params")
-				}
-				if step.Params[0].Type != ID {
-					return fmt.Errorf("%w: %s", ErrInvalidParamType, step.Params[0].Type)
-				}
-				idStr, ok := step.Params[0].Value.(string)
-				if !ok {
-					return fmt.Errorf("%w: %s", ErrFailedParamTypeCast, step.Params[0].Type)
-				}
-				if step.Params[1].Type != Uint64 {
-					return fmt.Errorf("%w: %s", ErrInvalidParamType, step.Params[1].Type)
+					resp.Error = fmt.Sprintf("%s: %s", ErrInvalidStep.Error(), "execute requires at least 2 params")
+					return nil
 				}
 
 				// get program ID from params
+				if step.Params[0].Type != ID {
+					resp.Error = fmt.Sprintf("%s: %s", ErrInvalidParamType.Error(), step.Params[0].Type)
+					return nil
+				}
+				idStr, ok := step.Params[0].Value.(string)
+				if !ok {
+					resp.Error = fmt.Sprintf("%s: %s", ErrFailedParamTypeCast.Error(), step.Params[0].Type)
+					return nil
+				}
 				programID, err := r.getProgramID(idStr)
 				if err != nil {
-					return err
+					resp.Error = err.Error()
+					return nil
 				}
+
 
 				// maxUnits from params
-				maxUnits, ok := step.Params[1].Value.(uint64)
-				if !ok {
-					return fmt.Errorf("%w: %s", ErrFailedParamTypeCast, step.Params[1].Type)
+				if step.Params[1].Type != Uint64 {
+					resp.Error = fmt.Sprintf("%s: %s", ErrInvalidParamType.Error(), step.Params[1].Type)
+					return nil
 				}
-
+				maxUnits, err := intToUint64(step.Params[1].Value)
+				if err != nil{
+					resp.Error = fmt.Sprintf("failed to convert max_unit to uint64: %s", err.Error())
+					return nil
+				}
+			
 				// TODO: get cfg from genesis
-
-				programExecuteFunc(ctx, r.db, programID, &step)
-			}
-			utils.Outf("{{green}}%s transaction successful: {{/}}%s\n\n", parentID.String())
-		case Call:
-			// get program ID from step
-			programID, err := r.getProgramID(&step)
-			if err != nil {
-				return err
-			}
-
-			supported := runtime.NewSupportedImports()
-			supported.Register("state", func() runtime.Import {
-				return pstate.New(r.log, r.db)
-			})
-			supported.Register("program", func() runtime.Import {
-				return program.New(r.log, r.db, cfg)
-			})
-
-			// create and initialize runtime
-			rt := runtime.New(log, cfg, supported.Imports())
-			defer rt.Stop()
-			err = rt.Initialize(ctx, programBytes)
-			if err != nil {
-				return ids.Empty, 0, 0, err
-			}
-
-			// get program from db
-			programBytes, err := getProgram(ctx, r.db, programID)
-			if err != nil {
-				return err
-			}
-
-			id, resp, balance, err := callProgram(ctx, programID, programBytes, &step.Params)
-			if err != nil {
-				return err
-			}
-
-			// simulate call program transaction
-			txID, err := generateRandomID()
-			if err != nil {
-				return err
-			}
-
-			utils.Outf("{{yellow}}function: {{/}}%s\n", step.Function)
-			utils.Outf("{{yellow}}params: {{/}}%v\n", step.Params)
-			utils.Outf("{{yellow}}max fee: {{/}}%v\n", step.MaxFee)
-			if step.Require.Result != (Assertion{}) {
-				if !validateAssertion(resp, &step.Require.Result) {
-					return fmt.Errorf("%w: %d %s %d", ErrResultAssertionFailed, resp, step.Require.Result.Operator, step.Require.Result.Operand)
+				cfg, err := newSimulatorRuntimeConfig()
+				if err != nil {
+					resp.Error = err.Error()
+					return nil
 				}
-			}
-			utils.Outf("{{yellow}}fee balance: {{/}}%d\n", balance)
-			if step.Require.Balance != (Assertion{}) {
-				if !validateAssertion(balance, &step.Require.Balance) {
-					return fmt.Errorf("%w: %d %s %d", ErrBalanceAssertionFailed, balance, step.Require.Balance.Operator, step.Require.Balance.Operand)
+
+				id, result, balance, err := programExecuteFunc(ctx, r.log, r.db, cfg, programID, step.Params, step.Method, maxUnits)
+				if err != nil {
+					resp.Error = err.Error()
+					return nil
 				}
+
+				if step.Method == ProgramExecute {
+					resp.Result = Result{
+						ID:      id.String(),
+						Balance: balance,
+					}
+				} else {
+					resp.Result = Result{
+						Response: result,
+					}
+				}
+				resp.Print()
 			}
-			utils.Outf("{{blue}}response: {{/}}%d\n", resp)
-			utils.Outf("{{green}}call transaction successful: {{/}}%s\n\n", id.String())
+
 		default:
-			return fmt.Errorf("%w: %s", ErrInvalidStep, step.Task)
+			return fmt.Errorf("%w: %s", ErrInvalidEndpoint, step.Endpoint)
 		}
 	}
-
 	return nil
 }
 
@@ -243,8 +244,10 @@ func (r *runCmd) Run(ctx context.Context) error {
 // where N is the step the id was created from execution.
 func (r *runCmd) getProgramID(idStr string) (ids.ID, error) {
 	if r.programMap[idStr] != ids.Empty {
-		programID, _ := r.programMap[idStr]
-		return programID, nil
+		programID, ok := r.programMap[idStr]
+		if ok {
+			return programID, nil
+		}
 	}
 
 	return ids.FromString(idStr)
@@ -267,12 +270,10 @@ func generateRandomID() (ids.ID, error) {
 	return id, nil
 }
 
-func newSimulatorRuntimeConfig() *runtime.Config {
-	
-	cfg, err := runtime.NewConfigBuilder().
-	WithEnableTestingOnlyMode(true).
-	EnableBulkMemory(true).
-	// only required for Wasi support exposed by testing only.
-	Build()
+func newSimulatorRuntimeConfig() (*runtime.Config, error) {
+	return runtime.NewConfigBuilder().
+		WithEnableTestingOnlyMode(true).
+		WithBulkMemory(true).
+		// only required for Wasi support exposed by testing only.
+		Build()
 }
-

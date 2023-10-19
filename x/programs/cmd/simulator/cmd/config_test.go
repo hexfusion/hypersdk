@@ -8,15 +8,17 @@ import "testing"
 func TestValidateAssertion(t *testing.T) {
 	tests := []struct {
 		actual    uint64
-		assertion Assertion
+		assertion ResultAssertion
 		expected  bool
 	}{
-		{5, Assertion{Operator: string(GreaterThan), Operand: 3}, true},
-		{5, Assertion{Operator: string(LessThan), Operand: 10}, true},
-		{5, Assertion{Operator: string(EqualTo), Operand: 5}, true},
-		{5, Assertion{Operator: string(NotEqualTo), Operand: 3}, true},
-		{5, Assertion{Operator: string(GreaterThan), Operand: 10}, false},
-		{5, Assertion{Operator: string(LessThan), Operand: 2}, false},
+		{5, ResultAssertion{Operator: string(NumericGt), Value: "3"}, true},
+		{5, ResultAssertion{Operator: string(NumericLt), Value: "10"}, true},
+		{5, ResultAssertion{Operator: string(NumericEq), Value: "5"}, true},
+		{5, ResultAssertion{Operator: string(NumericNe), Value: "3"}, true},
+		{5, ResultAssertion{Operator: string(NumericGt), Value: "10"}, false},
+		{5, ResultAssertion{Operator: string(NumericLt), Value: "2"}, false},
+		{5, ResultAssertion{Operator: string(NumericGe), Value: "5"}, true},
+		{5, ResultAssertion{Operator: string(NumericGe), Value: "1"}, true},
 	}
 
 	for _, tt := range tests {

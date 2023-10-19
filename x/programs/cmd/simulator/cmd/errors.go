@@ -20,7 +20,7 @@ var (
 
 	// Steps
 	ErrInvalidStep           = errors.New("invalid step")
-	ErrInvalidTask           = errors.New("invalid task")
+	ErrInvalidEndpoint       = errors.New("invalid endpoint")
 	ErrInvalidPlan           = errors.New("invalid plan")
 	ErrConfigMissingRequired = errors.New("missing required field")
 )

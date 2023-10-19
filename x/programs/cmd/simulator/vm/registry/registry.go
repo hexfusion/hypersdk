@@ -9,8 +9,8 @@ import (
 	"github.com/ava-labs/hypersdk/chain"
 	"github.com/ava-labs/hypersdk/codec"
 
-	"github.com/ava-labs/hypersdk/x/programs/simulator/vm/actions"
-	"github.com/ava-labs/hypersdk/x/programs/simulator/vm/consts"
+	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/actions"
+	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/consts"
 )
 
 // Setup types

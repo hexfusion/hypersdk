@@ -9,46 +9,68 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/ava-labs/hypersdk/cli"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/hypersdk/crypto/ed25519"
 	"github.com/ava-labs/hypersdk/state"
-	"github.com/ava-labs/hypersdk/utils"
+
+	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/storage"
 )
 
-func newKeyCmd() *cobra.Command {
+func newKeyCmd(log logging.Logger, db *state.SimpleMutable) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "key",
 		Short: "Manage private keys",
 	}
 	cmd.AddCommand(
-		newCreateKeyCmd(),
+		newKeyCreateCmd(log, db),
 	)
 	return cmd
 }
 
-func newCreateKeyCmd() *cobra.Command {
+type keyCreateCmd struct {
+	log  logging.Logger
+	db   *state.SimpleMutable
+	name string
+}
+
+func newKeyCreateCmd(log logging.Logger, db *state.SimpleMutable) *cobra.Command {
+	c := &keyCreateCmd{
+		log: log,
+		db:  db,
+	}
+
 	return &cobra.Command{
 		Use:   "create [name]",
 		Short: "Creates a new named private key and stores it in the database",
-		RunE:  func(cmd *cobra.Command, args []string) error {
-			
-		}
 		Args:  cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			err := c.Init(args)
+			if err != nil {
+				return err
+			}
+			err = c.Verify()
+			if err != nil {
+				return err
+			}
+			return c.Run(cmd.Context())
+		},
 	}
 }
 
-func createKeys(cmd *cobra.Command, args []string) error {
-	name := args[0]
-	err := newKey(cmd.Context(), db, name)
-	if err != nil {
-		return err
-	}
-	utils.Outf("{{green}}created new private key:{{/}} %s\n", name)
-
+func (c *keyCreateCmd) Init(args []string) error {
+	c.name = args[0]
 	return nil
 }
 
-func createKey(ctx context.Context, db *state.SimpleMutable, name string) error {
+func (c *keyCreateCmd) Verify() error {
+	return nil
+}
+
+func (c *keyCreateCmd) Run(ctx context.Context) error {
+	return keyCreateFunc(ctx, c.db, c.name)
+}
+
+func keyCreateFunc(ctx context.Context, db *state.SimpleMutable, name string) error {
 	priv, err := ed25519.GeneratePrivateKey()
 	if err != nil {
 		return err
@@ -60,7 +82,7 @@ func createKey(ctx context.Context, db *state.SimpleMutable, name string) error 
 	if err != nil {
 		return err
 	}
-	err = setKey(context.Background(), db, priv, name)
+	err = storage.SetKey(ctx, db, priv, name)
 	if err != nil {
 		return err
 	}
@@ -69,6 +91,6 @@ func createKey(ctx context.Context, db *state.SimpleMutable, name string) error 
 }
 
 func hasKey(ctx context.Context, db state.Immutable, name string) (bool, error) {
-	_, ok, err := getPublicKey(ctx, db, name)
+	_, ok, err := storage.GetPublicKey(ctx, db, name)
 	return ok, err
 }

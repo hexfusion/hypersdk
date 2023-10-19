@@ -6,7 +6,7 @@ package utils
 import (
 	"github.com/ava-labs/hypersdk/crypto/ed25519"
 
-	"github.com/ava-labs/hypersdk/x/programs/simulator/vm/consts"
+	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/consts"
 )
 
 func Address(pk ed25519.PublicKey) string {

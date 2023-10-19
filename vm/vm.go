@@ -164,6 +164,9 @@ func (vm *VM) Initialize(
 	if err := gatherer.Register("hypersdk", defaultRegistry); err != nil {
 		return err
 	}
+
+	log := vm.snowCtx.Log
+
 	vm.metrics = metrics
 	vm.proposerMonitor = NewProposerMonitor(vm)
 	vm.networkManager = network.NewManager(vm.snowCtx.Log, vm.snowCtx.NodeID, appSender)
@@ -373,6 +376,9 @@ func (vm *VM) Initialize(
 
 	// Setup state syncing
 	stateSyncHandler, stateSyncSender := vm.networkManager.Register()
+
+	log.Info("initializing state sync client", zap.Any("appsender", stateSyncSender))
+
 	syncRegistry := prometheus.NewRegistry()
 	vm.stateSyncNetworkClient, err = syncEng.NewNetworkClient(
 		stateSyncSender,
@@ -385,6 +391,7 @@ func (vm *VM) Initialize(
 	if err != nil {
 		return err
 	}
+	log.Info("state sync client", zap.Any("appsender", vm.stateSyncNetworkClient))
 	if err := gatherer.Register("sync", syncRegistry); err != nil {
 		return err
 	}

@@ -15,23 +15,23 @@ import (
 	"github.com/ava-labs/hypersdk/state"
 	"github.com/ava-labs/hypersdk/utils"
 
+	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/storage"
 	"github.com/ava-labs/hypersdk/x/programs/runtime"
-	"github.com/ava-labs/hypersdk/x/programs/simulator/vm/storage"
 )
 
 var _ chain.Action = (*ProgramExecute)(nil)
 
 type ProgramExecute struct {
-	ProgramID string `json:"programId"`
-	Function string `json:"programFunction"`
-	MaxFee	uint64 `json:"maxFee"`
-	Params []uint64 `json:"arguments"`
+	ProgramID string   `json:"programId"`
+	Function  string   `json:"programFunction"`
+	MaxUnits  uint64   `json:"maxUnits"`
+	Params    []uint64 `json:"arguments"`
 
-	runtime runtime.Runtime
+	Runtime runtime.Runtime
 }
 
 func (*ProgramExecute) GetTypeID() uint8 {
-	return programCreateID
+	return programExecuteID
 }
 
 func (t *ProgramExecute) StateKeys(rauth chain.Auth, id ids.ID) []string {
@@ -66,25 +66,30 @@ func (t *ProgramExecute) Execute(
 	programID, err := ids.FromString(t.ProgramID)
 	if err != nil {
 		return false, 1, utils.ErrBytes(err), nil, nil
-	}	
+	}
 
 	programBytes, err := storage.GetProgram(ctx, mu, programID)
 	if err != nil {
 		return false, 1, utils.ErrBytes(err), nil, nil
 	}
-	
-	err = t.runtime.Initialize(ctx, programBytes, t.MaxFee)
+
+	err = t.Runtime.Initialize(ctx, programBytes, t.MaxUnits)
 	if err != nil {
 		return false, 1, utils.ErrBytes(err), nil, nil
 	}
-	defer t.runtime.Stop()
+	defer t.Runtime.Stop()
 
-	resp, err := t.runtime.Call(ctx, t.Function, t.Params...)
+	resp, err := t.Runtime.Call(ctx, t.Function, t.Params...)
 	if err != nil {
 		return false, 1, utils.ErrBytes(err), nil, nil
 	}
 
-	return true, resp[0], nil, nil, nil
+	p := codec.NewWriter(len(resp), len(resp))
+	for _, r := range resp {
+		p.PackUint64(r)
+	}
+
+	return true, 1, p.Bytes(), nil, nil
 }
 
 func (*ProgramExecute) MaxComputeUnits(chain.Rules) uint64 {
@@ -98,7 +103,7 @@ func (*ProgramExecute) Size() int {
 func (t *ProgramExecute) Marshal(p *codec.Packer) {
 	p.PackString(t.ProgramID)
 	p.PackString(t.Function)
-	p.PackUint64(t.MaxFee)
+	p.PackUint64(t.MaxUnits)
 	p.PackUint64(uint64(len(t.Params)))
 	for _, param := range t.Params {
 		p.PackUint64(param)
@@ -109,7 +114,7 @@ func UnmarshalProgramExecute(p *codec.Packer, _ *warp.Message) (chain.Action, er
 	var pe ProgramExecute
 	pe.ProgramID = p.UnpackString(true)
 	pe.Function = p.UnpackString(true)
-	pe.MaxFee = p.UnpackUint64(true)
+	pe.MaxUnits = p.UnpackUint64(true)
 	paramLen := p.UnpackUint64(true)
 	pe.Params = make([]uint64, paramLen)
 	for i := uint64(0); i < paramLen; i++ {

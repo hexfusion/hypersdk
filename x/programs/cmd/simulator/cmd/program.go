@@ -13,14 +13,15 @@ import (
 	"github.com/ava-labs/avalanchego/ids"
 	"github.com/ava-labs/avalanchego/utils/logging"
 
+	"github.com/ava-labs/hypersdk/codec"
 	"github.com/ava-labs/hypersdk/state"
 	"github.com/ava-labs/hypersdk/utils"
 
+	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/actions"
+	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/storage"
 	"github.com/ava-labs/hypersdk/x/programs/examples/imports/program"
 	"github.com/ava-labs/hypersdk/x/programs/examples/imports/pstate"
 	"github.com/ava-labs/hypersdk/x/programs/runtime"
-	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/actions"
-	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/storage"
 )
 
 func newProgramCmd(log logging.Logger, db *state.SimpleMutable) *cobra.Command {
@@ -36,7 +37,6 @@ func newProgramCmd(log logging.Logger, db *state.SimpleMutable) *cobra.Command {
 	return cmd
 }
 
-
 type programCreate struct {
 	db      *state.SimpleMutable
 	keyName string
@@ -51,7 +51,7 @@ func newProgramCreateCmd(log logging.Logger, db *state.SimpleMutable) *cobra.Com
 	cmd := &cobra.Command{
 		Use:   "create --path [path] --key [key name]",
 		Short: "Create a HyperSDK program transaction",
-		Args: cobra.MinimumNArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			err := p.Init(args)
 			if err != nil {
@@ -132,7 +132,16 @@ func programCreateFunc(ctx context.Context, db *state.SimpleMutable, path string
 	return programID, nil
 }
 
-func programExecuteFunc(ctx context.Context, log logging.Logger, db *state.SimpleMutable, cfg *runtime.Config, programID ids.ID, stepParams []Parameter, function string) (ids.ID, uint64, uint64, error) {
+func programExecuteFunc(
+	ctx context.Context,
+	log logging.Logger,
+	db *state.SimpleMutable,
+	cfg *runtime.Config,
+	programID ids.ID,
+	stepParams []Parameter,
+	function string,
+	maxUnits uint64,
+) (ids.ID, []uint64, uint64, error) {
 	supported := runtime.NewSupportedImports()
 	supported.Register("state", func() runtime.Import {
 		return pstate.New(log, db)
@@ -144,50 +153,54 @@ func programExecuteFunc(ctx context.Context, log logging.Logger, db *state.Simpl
 	// create and initialize runtime
 	rt, err := runtime.New(log, cfg, supported.Imports())
 	if err != nil {
-		return ids.Empty, 0, 0, err
+		return ids.Empty, nil, 0, err
 	}
 
 	// create params from simulation step and write objects to memory.
 	params, err := createParams(ctx, rt.Memory(), db, stepParams)
 	if err != nil {
-		return ids.Empty, 0, 0, err
+		return ids.Empty, nil, 0, err
 	}
 
 	// simulate create program transaction
 	programTxID, err := generateRandomID()
 	if err != nil {
-		return ids.Empty, 0, 0, err
+		return ids.Empty, nil, 0, err
 	}
 
-	programEecuteAction := actions.ProgramExecute{
+	programExecuteAction := actions.ProgramExecute{
 		ProgramID: programID.String(),
 		Function:  function,
 		Params:    params,
+		MaxUnits:  maxUnits,
+		Runtime:   rt,
 	}
 
 	// execute the action
-	success, _, _, _, err := programEecuteAction.Execute(ctx, nil, db, 0, nil, programTxID, false)
+	success, _, resp, _, err := programExecuteAction.Execute(ctx, nil, db, 0, nil, programTxID, false)
 	if !success {
-		return ids.Empty, 0, 0, fmt.Errorf("program execution failed: %s", err)
+		return ids.Empty, nil, 0, fmt.Errorf("program execution failed: %s", err)
 	}
 	if err != nil {
-		return ids.Empty, 0, 0, err
+		return ids.Empty, nil, 0, err
+	}
+
+	p := codec.NewReader(resp, len(resp))
+	var result []uint64
+	for range resp {
+		result = append(result, p.UnpackUint64(true))
 	}
 
 	// store program to disk only on success
 	err = db.Commit(ctx)
 	if err != nil {
-		return ids.Empty, 0, 0, err
-	}	
+		return ids.Empty, nil, 0, err
+	}
 
-
-	return callID, resp[0], rt.Meter().GetBalance(), nil
+	return programTxID, result, rt.Meter().GetBalance(), nil
 }
 
-
 func createParams(ctx context.Context, memory runtime.Memory, db state.Immutable, p []Parameter) ([]uint64, error) {
-
-	// first param should always the program ID
 	params := []uint64{}
 	for _, param := range p {
 		// Cast the param value to the correct type and for non integer types

@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	ProgramCreate  = "program.create"
-	ProgramExecute = "program.execute"
+	ProgramCreate  = "program_create"
+	ProgramExecute = "execute"
 )
 
 type Plan struct {
@@ -52,6 +52,36 @@ const (
 	/// functions including program to program.
 	ExecuteEndpoint Endpoint = "execute"
 )
+
+type Response struct {
+	// The index of the step that generated this response.
+	ID int `json,yaml:"id"`
+	// The result of the step.
+	Result Result `json,yaml:"result,omitempty"`
+	// The error message if available.
+	Error string `json,yaml:"error,omitempty"`
+}
+
+func (r *Response) Print() {
+	jsonBytes, err := json.Marshal(r)
+	if err != nil {
+		fmt.Printf(`{"error": "failed to marshal response"}`)
+	}
+
+	// print response
+	fmt.Println(string(jsonBytes))
+}
+
+type Result struct {
+	// The tx id of the transaction that was created.
+	ID string `json,yaml:"id,omitempty"`
+	// The balance after the step has completed.
+	Balance uint64 `json,yaml:"balance,omitempty"`
+	// The result of the call.
+	Response []uint64 `json,yaml:"response,omitempty"`
+	// An optional message.
+	Msg string `json,yaml:"msg,omitempty"`
+}
 
 type Require struct {
 	// Assertions against the result of the step.
@@ -135,18 +165,6 @@ func validateAssertion(actual uint64, assertion *ResultAssertion) bool {
 	return false
 }
 
-// validateStep validates the simulation step configuration format.
-func validateStep(step *Step) error {
-	if step.Endpoint == "" {
-		return fmt.Errorf("%w: %s", ErrConfigMissingRequired, "endpoint")
-	}
-	if step.Description == "" {
-		return fmt.Errorf("%w: %s", ErrConfigMissingRequired, "description")
-	}
-
-	return nil
-}
-
 func unmarshalPlan(bytes []byte) (*Plan, error) {
 	var p Plan
 	switch {
@@ -170,6 +188,17 @@ func boolToUint64(b bool) uint64 {
 		return 1
 	}
 	return 0
+}
+
+func intToUint64(i interface{}) (uint64, error) {
+	int, ok := i.(int)
+	if !ok {
+		return 0, fmt.Errorf("%w: %s", ErrFailedParamTypeCast, Uint64)
+	}
+	if int < 0 {
+		return 0, fmt.Errorf("failed to convert negative integer to uint64")
+	}
+	return uint64(int), nil
 }
 
 func isJSON(s string) bool {

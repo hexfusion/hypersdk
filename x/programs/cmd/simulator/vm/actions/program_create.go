@@ -15,7 +15,7 @@ import (
 	"github.com/ava-labs/hypersdk/state"
 	"github.com/ava-labs/hypersdk/utils"
 
-	"github.com/ava-labs/hypersdk/x/programs/simulator/vm/storage"
+	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/storage"
 )
 
 var _ chain.Action = (*ProgramCreate)(nil)

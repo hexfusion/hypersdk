@@ -16,31 +16,12 @@ import (
 var _ Runtime = &WasmRuntime{}
 
 // New returns a new wasm runtime.
-func New(log logging.Logger, cfg *Config, imports SupportedImports) (Runtime, error) {
-	engineCfg, err := cfg.Engine()
-	if err != nil {
-		return nil, err
-	}
-
-	// initialize runtime store early so we have access to memory before initialization.
-	store := wasmtime.NewStore(wasmtime.NewEngineWithConfig(engineCfg))
-	store.Limiter(
-		cfg.limitMaxMemory,
-		cfg.limitMaxTableElements,
-		cfg.limitMaxInstances,
-		cfg.limitMaxTables,
-		cfg.limitMaxMemories,
-	)
-
-	// set initial epoch deadline
-	store.SetEpochDeadline(1)
-
+func New(log logging.Logger, cfg *Config, imports SupportedImports) Runtime {
 	return &WasmRuntime{
 		imports: imports,
 		log:     log,
 		cfg:     cfg,
-		store:   store,
-	}, nil
+	}
 }
 
 type WasmRuntime struct {
@@ -66,6 +47,24 @@ func (r *WasmRuntime) Initialize(ctx context.Context, programBytes []byte, maxUn
 		// send immediate interrupt to engine
 		r.Stop()
 	}(ctx)
+
+	engineCfg, err := r.cfg.Engine()
+	if err != nil {
+		return err
+	}
+
+	// initialize runtime store early so we have access to memory before initialization.
+	r.store = wasmtime.NewStore(wasmtime.NewEngineWithConfig(engineCfg))
+	r.store.Limiter(
+		r.cfg.limitMaxMemory,
+		r.cfg.limitMaxTableElements,
+		r.cfg.limitMaxInstances,
+		r.cfg.limitMaxTables,
+		r.cfg.limitMaxMemories,
+	)
+
+	// set initial epoch deadline
+	r.store.SetEpochDeadline(1)
 
 	switch r.cfg.compileStrategy {
 	case PrecompiledWasm:

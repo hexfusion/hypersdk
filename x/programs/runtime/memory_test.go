@@ -43,8 +43,7 @@ func TestLimitMaxMemory(t *testing.T) {
 		WithLimitMaxMemory(1 * MemoryPageSize). // 1 page
 		Build()
 	require.NoError(err)
-	runtime, err := New(log, cfg, nil)
-	require.NoError(err)
+	runtime := New(log, cfg, nil)
 	err = runtime.Initialize(context.Background(), wasm, maxUnits)
 	require.ErrorContains(err, "memory minimum size of 2 pages exceeds memory limits")
 }
@@ -66,8 +65,7 @@ func TestLimitMaxMemoryGrow(t *testing.T) {
 		WithLimitMaxMemory(1 * MemoryPageSize). // 1 page
 		Build()
 	require.NoError(err)
-	runtime, err := New(logging.NoLog{}, cfg, nil)
-	require.NoError(err)
+	runtime := New(logging.NoLog{}, cfg, nil)
 	err = runtime.Initialize(context.Background(), wasm, maxUnits)
 	require.NoError(err)
 
@@ -97,8 +95,7 @@ func TestWriteExceedsLimitMaxMemory(t *testing.T) {
 		WithLimitMaxMemory(1 * MemoryPageSize). // 1 page
 		Build()
 	require.NoError(err)
-	runtime, err := New(logging.NoLog{}, cfg, nil)
-	require.NoError(err)
+	runtime := New(logging.NoLog{}, cfg, nil)
 	err = runtime.Initialize(context.Background(), wasm, maxUnits)
 	require.NoError(err)
 	maxMemory, err := runtime.Memory().Len()
@@ -128,8 +125,7 @@ func TestWithMaxWasmStack(t *testing.T) {
 		WithMaxWasmStack(660).
 		Build()
 	require.NoError(err)
-	runtime, err := New(logging.NoLog{}, cfg, nil)
-	require.NoError(err)
+	runtime := New(logging.NoLog{}, cfg, nil)
 	err = runtime.Initialize(context.Background(), wasm, maxUnits)
 	require.NoError(err)
 	_, err = runtime.Call(context.Background(), "get")
@@ -140,8 +136,7 @@ func TestWithMaxWasmStack(t *testing.T) {
 		WithMaxWasmStack(500).
 		Build()
 	require.NoError(err)
-	runtime, err = New(logging.NoLog{}, cfg, nil)
-	require.NoError(err)
+	runtime = New(logging.NoLog{}, cfg, nil)
 	err = runtime.Initialize(context.Background(), wasm, maxUnits)
 	require.NoError(err)
 	// exceed the stack limit

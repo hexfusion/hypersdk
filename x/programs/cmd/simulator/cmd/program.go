@@ -15,12 +15,11 @@ import (
 
 	"github.com/ava-labs/hypersdk/codec"
 	"github.com/ava-labs/hypersdk/state"
-	"github.com/ava-labs/hypersdk/utils"
+	hutils "github.com/ava-labs/hypersdk/utils"
 
 	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/actions"
 	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/storage"
-	"github.com/ava-labs/hypersdk/x/programs/examples/imports/program"
-	"github.com/ava-labs/hypersdk/x/programs/examples/imports/pstate"
+	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/utils"
 	"github.com/ava-labs/hypersdk/x/programs/runtime"
 )
 
@@ -66,7 +65,7 @@ func newProgramCreateCmd(log logging.Logger, db *state.SimpleMutable) *cobra.Com
 				return err
 			}
 
-			utils.Outf("{{green}}deploy transaction successful: {{/}}%s\n", p.id.String())
+			hutils.Outf("{{green}}deploy transaction successful: {{/}}%s\n", p.id.String())
 			return nil
 		},
 	}
@@ -115,7 +114,7 @@ func programCreateFunc(ctx context.Context, db *state.SimpleMutable, path string
 	}
 
 	// execute the action
-	success, _, _, _, err := programCreateAction.Execute(ctx, nil, db, 0, nil, parentID, false)
+	success, _, _, _, err := programCreateAction.Execute(ctx, nil, db, 0, nil, programID, false)
 	if !success {
 		return ids.Empty, fmt.Errorf("program creation failed: %s", err)
 	}
@@ -134,55 +133,37 @@ func programCreateFunc(ctx context.Context, db *state.SimpleMutable, path string
 
 func programExecuteFunc(
 	ctx context.Context,
-	log logging.Logger,
 	db *state.SimpleMutable,
-	cfg *runtime.Config,
 	programID ids.ID,
 	stepParams []Parameter,
 	function string,
 	maxUnits uint64,
-) (ids.ID, []uint64, uint64, error) {
-	supported := runtime.NewSupportedImports()
-	supported.Register("state", func() runtime.Import {
-		return pstate.New(log, db)
-	})
-	supported.Register("program", func() runtime.Import {
-		return program.New(log, db, cfg)
-	})
-
-	// create and initialize runtime
-	rt, err := runtime.New(log, cfg, supported.Imports())
+) (ids.ID, []uint64, error) {
+	// create call params from simulation data
+	params, err := createCallParams(ctx, db, stepParams)
 	if err != nil {
-		return ids.Empty, nil, 0, err
-	}
-
-	// create params from simulation step and write objects to memory.
-	params, err := createParams(ctx, rt.Memory(), db, stepParams)
-	if err != nil {
-		return ids.Empty, nil, 0, err
+		return ids.Empty, nil, err
 	}
 
 	// simulate create program transaction
 	programTxID, err := generateRandomID()
 	if err != nil {
-		return ids.Empty, nil, 0, err
+		return ids.Empty, nil, err
 	}
 
 	programExecuteAction := actions.ProgramExecute{
-		ProgramID: programID.String(),
 		Function:  function,
 		Params:    params,
 		MaxUnits:  maxUnits,
-		Runtime:   rt,
 	}
 
 	// execute the action
 	success, _, resp, _, err := programExecuteAction.Execute(ctx, nil, db, 0, nil, programTxID, false)
 	if !success {
-		return ids.Empty, nil, 0, fmt.Errorf("program execution failed: %s", err)
+		return ids.Empty, nil, fmt.Errorf("program execution failed: %s", err)
 	}
 	if err != nil {
-		return ids.Empty, nil, 0, err
+		return ids.Empty, nil, err
 	}
 
 	p := codec.NewReader(resp, len(resp))
@@ -194,48 +175,28 @@ func programExecuteFunc(
 	// store program to disk only on success
 	err = db.Commit(ctx)
 	if err != nil {
-		return ids.Empty, nil, 0, err
+		return ids.Empty, nil, err
 	}
 
-	return programTxID, result, rt.Meter().GetBalance(), nil
+	return programTxID, result, nil
 }
 
-func createParams(ctx context.Context, memory runtime.Memory, db state.Immutable, p []Parameter) ([]uint64, error) {
-	params := []uint64{}
-	for _, param := range p {
-		// Cast the param value to the correct type and for non integer types
-		// write the bytes to the guest programs memory.
+func createCallParams(ctx context.Context, db state.Immutable, params []Parameter) ([]runtime.CallParam, error) {
+	cp := make([]runtime.CallParam, 0, len(params))
+	for _, param := range params {
 		switch param.Type {
-		case String:
+		case String, ID:
 			val, ok := param.Value.(string)
 			if !ok {
 				return nil, fmt.Errorf("%w: %s", ErrFailedParamTypeCast, param.Type)
 			}
-			ptr, err := runtime.WriteBytes(memory, []byte(val))
-			if err != nil {
-				return nil, err
-			}
-			params = append(params, ptr)
+			cp = append(cp, runtime.CallParam{Value: val})
 		case Bool:
 			val, ok := param.Value.(bool)
 			if !ok {
 				return nil, fmt.Errorf("%w: %s", ErrFailedParamTypeCast, param.Type)
 			}
-			params = append(params, boolToUint64(val))
-		case ID:
-			val, ok := param.Value.(string)
-			if !ok {
-				return nil, fmt.Errorf("%w: %s", ErrFailedParamTypeCast, param.Type)
-			}
-			id, err := ids.FromString(val)
-			if err != nil {
-				return nil, err
-			}
-			ptr, err := runtime.WriteBytes(memory, id[:])
-			if err != nil {
-				return nil, err
-			}
-			params = append(params, ptr)
+			cp = append(cp, runtime.CallParam{Value: boolToUint64(val)})
 		case KeyEd25519:
 			val, ok := param.Value.(string)
 			if !ok {
@@ -249,18 +210,17 @@ func createParams(ctx context.Context, memory runtime.Memory, db state.Immutable
 			if err != nil {
 				return nil, err
 			}
-			ptr, err := runtime.WriteBytes(memory, key[:])
-			if err != nil {
-				return nil, err
-			}
-			params = append(params, ptr)
+			cp = append(cp, runtime.CallParam{Value: utils.Address(key)})
 		case Uint64:
 			switch v := param.Value.(type) {
 			case float64:
-				// json unmarshal converts all numbers to float64
-				params = append(params, uint64(v))
+				// json unmarshal converts to float64
+				cp = append(cp, runtime.CallParam{Value: uint64(v)})
 			case int:
-				params = append(params, uint64(v))
+				if v < 0 {
+					return nil, fmt.Errorf("%w: %s", runtime.ErrNegativeValue, param.Type)
+				}
+				cp = append(cp, runtime.CallParam{Value: uint64(v)})
 			default:
 				return nil, fmt.Errorf("%w: %s", ErrFailedParamTypeCast, param.Type)
 			}
@@ -269,5 +229,5 @@ func createParams(ctx context.Context, memory runtime.Memory, db state.Immutable
 		}
 	}
 
-	return params, nil
+	return cp, nil
 }

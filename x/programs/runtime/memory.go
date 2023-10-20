@@ -123,3 +123,30 @@ func WriteBytes(m Memory, buf []byte) (uint64, error) {
 
 	return offset, nil
 }
+
+// WriteParams is a helper function that writes the given params to memory if necessary.
+// Supported types include int, uint64 and string.
+func WriteParams(m Memory, p []CallParam) ([]uint64, error) {
+	params := []uint64{}
+	for _, param := range p {
+		switch v := param.Value.(type) {
+		case string:
+			ptr, err := WriteBytes(m, []byte(v))
+			if err != nil {
+				return nil, err
+			}
+			params = append(params, ptr)
+		case int:
+			if v < 0 {
+				return nil, fmt.Errorf("failed to write param: %w", ErrNegativeValue)
+			}
+			params = append(params, uint64(v))
+		case uint64:
+			params = append(params, v)
+		default:
+			return nil, fmt.Errorf("%w: support types int, uint64 and string", ErrInvalidParamType)
+		}
+	}
+
+	return params, nil
+}

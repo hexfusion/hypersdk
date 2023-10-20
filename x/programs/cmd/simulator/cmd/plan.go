@@ -20,13 +20,6 @@ import (
 
 	"github.com/ava-labs/hypersdk/state"
 	"github.com/ava-labs/hypersdk/utils"
-	"github.com/ava-labs/hypersdk/x/programs/runtime"
-)
-
-const ()
-
-var (
-	parentID ids.ID
 )
 
 type runCmd struct {
@@ -195,26 +188,18 @@ func (r *runCmd) Run(ctx context.Context) error {
 					return nil
 				}
 
-
 				// maxUnits from params
 				if step.Params[1].Type != Uint64 {
 					resp.Error = fmt.Sprintf("%s: %s", ErrInvalidParamType.Error(), step.Params[1].Type)
 					return nil
 				}
 				maxUnits, err := intToUint64(step.Params[1].Value)
-				if err != nil{
+				if err != nil {
 					resp.Error = fmt.Sprintf("failed to convert max_unit to uint64: %s", err.Error())
 					return nil
 				}
-			
-				// TODO: get cfg from genesis
-				cfg, err := newSimulatorRuntimeConfig()
-				if err != nil {
-					resp.Error = err.Error()
-					return nil
-				}
 
-				id, result, balance, err := programExecuteFunc(ctx, r.log, r.db, cfg, programID, step.Params, step.Method, maxUnits)
+				id, result, err := programExecuteFunc(ctx, r.db, programID, step.Params, step.Method, maxUnits)
 				if err != nil {
 					resp.Error = err.Error()
 					return nil
@@ -223,7 +208,7 @@ func (r *runCmd) Run(ctx context.Context) error {
 				if step.Method == ProgramExecute {
 					resp.Result = Result{
 						ID:      id.String(),
-						Balance: balance,
+						Balance: result[0],
 					}
 				} else {
 					resp.Result = Result{
@@ -268,12 +253,4 @@ func generateRandomID() (ids.ID, error) {
 	}
 
 	return id, nil
-}
-
-func newSimulatorRuntimeConfig() (*runtime.Config, error) {
-	return runtime.NewConfigBuilder().
-		WithEnableTestingOnlyMode(true).
-		WithBulkMemory(true).
-		// only required for Wasi support exposed by testing only.
-		Build()
 }

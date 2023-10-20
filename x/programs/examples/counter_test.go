@@ -41,8 +41,7 @@ func TestCounterProgram(t *testing.T) {
 		return program.New(log, db, cfg)
 	})
 
-	rt, err := runtime.New(log, cfg, supported.Imports())
-	require.NoError(err)
+	rt := runtime.New(log, cfg, supported.Imports())
 	err = rt.Initialize(ctx, counterProgramBytes, maxUnits)
 	require.NoError(err)
 
@@ -76,8 +75,7 @@ func TestCounterProgram(t *testing.T) {
 
 	// initialize second runtime to create second counter program with an empty
 	// meter.
-	rt2, err := runtime.New(log, cfg, supported.Imports())
-	require.NoError(err)
+	rt2 := runtime.New(log, cfg, supported.Imports())
 	err = rt2.Initialize(ctx, counterProgramBytes, runtime.NoUnits)
 	require.NoError(err)
 

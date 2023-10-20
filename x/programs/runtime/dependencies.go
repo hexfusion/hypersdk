@@ -86,3 +86,7 @@ type Meter interface {
 	// the new balance of this meter.
 	TransferUnitsTo(to Meter, units uint64) (uint64, error)
 }
+
+type CallParam struct {
+	Value interface{} `json,yaml:"value"`
+}

@@ -5,8 +5,10 @@ package actions
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/ava-labs/avalanchego/ids"
+	"github.com/ava-labs/avalanchego/utils/logging"
 	"github.com/ava-labs/avalanchego/vms/platformvm/warp"
 	"github.com/ava-labs/hypersdk/chain"
 	"github.com/ava-labs/hypersdk/codec"
@@ -16,18 +18,17 @@ import (
 	"github.com/ava-labs/hypersdk/utils"
 
 	"github.com/ava-labs/hypersdk/x/programs/cmd/simulator/vm/storage"
+	"github.com/ava-labs/hypersdk/x/programs/examples/imports/program"
+	"github.com/ava-labs/hypersdk/x/programs/examples/imports/pstate"
 	"github.com/ava-labs/hypersdk/x/programs/runtime"
 )
 
 var _ chain.Action = (*ProgramExecute)(nil)
 
 type ProgramExecute struct {
-	ProgramID string   `json:"programId"`
-	Function  string   `json:"programFunction"`
-	MaxUnits  uint64   `json:"maxUnits"`
-	Params    []uint64 `json:"arguments"`
-
-	Runtime runtime.Runtime
+	Function string               `json:"programFunction"`
+	MaxUnits uint64               `json:"maxUnits"`
+	Params   []runtime.CallParam `json:"params"`
 }
 
 func (*ProgramExecute) GetTypeID() uint8 {
@@ -55,15 +56,20 @@ func (t *ProgramExecute) Execute(
 	id ids.ID,
 	_ bool,
 ) (bool, uint64, []byte, *warp.UnsignedMessage, error) {
-	if len(t.ProgramID) == 0 {
-		return false, 1, OutputValueZero, nil, nil
-	}
 	if len(t.Function) == 0 {
 		return false, 1, OutputValueZero, nil, nil
 	}
+	if len(t.Params) == 0 {
+		return false, 1, OutputValueZero, nil, nil
+	}
+
+	programIDStr, ok := t.Params[0].Value.(string)
+	if !ok {
+		return false, 1, utils.ErrBytes(fmt.Errorf("invalid call param: must be ID")), nil, nil
+	}
 
 	// TODO: take fee out of balance?
-	programID, err := ids.FromString(t.ProgramID)
+	programID, err := ids.FromString(programIDStr)
 	if err != nil {
 		return false, 1, utils.ErrBytes(err), nil, nil
 	}
@@ -73,17 +79,43 @@ func (t *ProgramExecute) Execute(
 		return false, 1, utils.ErrBytes(err), nil, nil
 	}
 
-	err = t.Runtime.Initialize(ctx, programBytes, t.MaxUnits)
+	// TODO: get cfg from genesis
+	cfg, err := runtime.NewConfigBuilder().
+		WithEnableTestingOnlyMode(true).
+		WithBulkMemory(true).
+		// only required for Wasi support exposed by testing only.
+		Build()
 	if err != nil {
 		return false, 1, utils.ErrBytes(err), nil, nil
 	}
-	defer t.Runtime.Stop()
+	
+	// TODO: allow configurable imports?
+	supported := runtime.NewSupportedImports()
+	supported.Register("state", func() runtime.Import {
+		return pstate.New(logging.NoLog{}, mu)
+	})
+	supported.Register("program", func() runtime.Import {
+		return program.New(logging.NoLog{}, mu, cfg)
+	})
 
-	resp, err := t.Runtime.Call(ctx, t.Function, t.Params...)
+	rt := runtime.New(logging.NoLog{}, cfg, supported.Imports())
+	err = rt.Initialize(ctx, programBytes, t.MaxUnits)
+	if err != nil {
+		return false, 1, utils.ErrBytes(err), nil, nil
+	}
+	defer rt.Stop()
+
+	params, err := runtime.WriteParams(rt.Memory(), t.Params)
 	if err != nil {
 		return false, 1, utils.ErrBytes(err), nil, nil
 	}
 
+	resp, err := rt.Call(ctx, t.Function, params...)
+	if err != nil {
+		return false, 1, utils.ErrBytes(err), nil, nil
+	}
+
+	// TODO: remove this is to support readonly response fro now.
 	p := codec.NewWriter(len(resp), len(resp))
 	for _, r := range resp {
 		p.PackUint64(r)
@@ -101,24 +133,40 @@ func (*ProgramExecute) Size() int {
 }
 
 func (t *ProgramExecute) Marshal(p *codec.Packer) {
-	p.PackString(t.ProgramID)
 	p.PackString(t.Function)
 	p.PackUint64(t.MaxUnits)
+	p.PackInt(len(t.Params))
 	p.PackUint64(uint64(len(t.Params)))
 	for _, param := range t.Params {
-		p.PackUint64(param)
+		switch v := param.Value.(type) {
+		case string:
+			p.PackByte(0x0)
+			p.PackString(v)
+		case uint64:
+			p.PackByte(0x1)
+			p.PackUint64(v)
+		case int:
+			p.PackByte(0x2)
+			p.PackInt(v)
+		}
 	}
 }
 
 func UnmarshalProgramExecute(p *codec.Packer, _ *warp.Message) (chain.Action, error) {
 	var pe ProgramExecute
-	pe.ProgramID = p.UnpackString(true)
 	pe.Function = p.UnpackString(true)
 	pe.MaxUnits = p.UnpackUint64(true)
-	paramLen := p.UnpackUint64(true)
-	pe.Params = make([]uint64, paramLen)
-	for i := uint64(0); i < paramLen; i++ {
-		pe.Params[i] = p.UnpackUint64(true)
+	paramLen := p.UnpackInt(true)
+	pe.Params = make([]runtime.CallParam, paramLen)
+	for i := 0; i < paramLen; i++ {
+		switch p.UnpackByte() {
+		case 0x0:
+			pe.Params[i] = runtime.CallParam{Value: p.UnpackString(true)}
+		case 0x1:
+			pe.Params[i] = runtime.CallParam{Value: p.UnpackUint64(true)}
+		case 0x2:
+			pe.Params[i] = runtime.CallParam{Value: p.UnpackInt(true)}
+		}
 	}
 	return &pe, p.Err()
 }

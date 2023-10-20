@@ -33,6 +33,7 @@ func newProgramCmd(log logging.Logger, db *state.SimpleMutable) *cobra.Command {
 	cmd.AddCommand(
 		newProgramCreateCmd(log, db),
 	)
+
 	return cmd
 }
 
@@ -65,13 +66,14 @@ func newProgramCreateCmd(log logging.Logger, db *state.SimpleMutable) *cobra.Com
 				return err
 			}
 
-			hutils.Outf("{{green}}deploy transaction successful: {{/}}%s\n", p.id.String())
+			hutils.Outf("{{green}}create program transaction successful: {{/}}%s\n", p.id.String())
 			return nil
 		},
 	}
 
 	cmd.PersistentFlags().StringVarP(&p.keyName, "key", "k", p.keyName, "name of the key to use to deploy the program")
 	cmd.MarkPersistentFlagRequired("key")
+
 	return cmd
 }
 
@@ -93,6 +95,7 @@ func (p *programCreate) Run(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -114,7 +117,10 @@ func programCreateFunc(ctx context.Context, db *state.SimpleMutable, path string
 	}
 
 	// execute the action
-	success, _, _, _, err := programCreateAction.Execute(ctx, nil, db, 0, nil, programID, false)
+	success, _, output, _, err := programCreateAction.Execute(ctx, nil, db, 0, nil, programID, false)
+	if output != nil {
+		fmt.Println(string(output))
+	}
 	if !success {
 		return ids.Empty, fmt.Errorf("program creation failed: %s", err)
 	}
@@ -152,9 +158,9 @@ func programExecuteFunc(
 	}
 
 	programExecuteAction := actions.ProgramExecute{
-		Function:  function,
-		Params:    params,
-		MaxUnits:  maxUnits,
+		Function: function,
+		Params:   params,
+		MaxUnits: maxUnits,
 	}
 
 	// execute the action

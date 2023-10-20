@@ -19,7 +19,6 @@ import (
 	"github.com/ava-labs/avalanchego/utils/logging"
 
 	"github.com/ava-labs/hypersdk/state"
-	"github.com/ava-labs/hypersdk/utils"
 )
 
 type runCmd struct {
@@ -60,7 +59,7 @@ func newRunCmd(log logging.Logger, db *state.SimpleMutable) *cobra.Command {
 	return cmd
 }
 
-func (r *runCmd) Init(args []string) (err error) {
+func (c *runCmd) Init(args []string) (err error) {
 	var planBytes []byte
 	if args[0] == "-" {
 		// read simulation plan from stdin
@@ -78,16 +77,16 @@ func (r *runCmd) Init(args []string) (err error) {
 		}
 	}
 
-	r.plan, err = unmarshalPlan(planBytes)
+	c.plan, err = unmarshalPlan(planBytes)
 	if err != nil {
 		return err
 	}
 
-	if r.plan.Steps == nil {
+	if c.plan.Steps == nil {
 		return fmt.Errorf("%w: %s", ErrInvalidPlan, "no steps found")
 	}
 
-	if r.plan.Steps[0].Params == nil {
+	if c.plan.Steps[0].Params == nil {
 		return fmt.Errorf("%w: %s", ErrInvalidStep, "no params found")
 	}
 
@@ -98,128 +97,106 @@ func (r *runCmd) Verify() error {
 	return nil
 }
 
-func (r *runCmd) Run(ctx context.Context) error {
-	r.log.Debug("simulation",
-		zap.String("plan", r.plan.Name),
+func (c *runCmd) Run(ctx context.Context) error {
+	c.log.Debug("simulation",
+		zap.String("plan", c.plan.Name),
 	)
 
-	for i, step := range r.plan.Steps {
-		r.log.Debug("simulation",
+	for i, step := range c.plan.Steps {
+		c.log.Debug("simulation",
 			zap.Int("step", i),
 			zap.String("description", step.Description),
+			zap.String("endpoint", string(step.Endpoint)),
+			zap.String("method", step.Method),
+			zap.Any("params", step.Params),
 		)
 
 		switch step.Endpoint {
 		case KeyEndpoint:
-			utils.Outf("{{red}} key:{{/}} %d\n", i)
-			resp := Response{
-				ID: i,
-			}
+			r := NewResponse(i)
 			keyName, ok := step.Params[0].Value.(string)
 			if !ok {
-				resp.Error = fmt.Sprintf("%w: %s", ErrFailedParamTypeCast, step.Params[0].Type)
-				return nil
+				return r.Err(fmt.Errorf("%w: %s", ErrFailedParamTypeCast, step.Params[0].Type))
 			}
 
-			err := keyCreateFunc(ctx, r.db, keyName)
+			err := keyCreateFunc(ctx, c.db, keyName)
 			if errors.Is(err, ErrDuplicateKeyName) {
-				r.log.Debug("key already exists")
+				c.log.Debug("key already exists")
 			} else if err != nil {
-				resp.Error = err.Error()
-				return nil
+				return r.Err(err)
 			}
-			resp.Result = Result{
+			r.Result = Result{
 				Msg: fmt.Sprintf("created key %s", keyName),
 			}
-			resp.Print()
+			r.Print()
 		case ExecuteEndpoint, ReadOnlyEndpoint: // for now the logic is the same for both
-			utils.Outf("{{red}} endpoint:{{/}} %s\n", step.Endpoint)
-			utils.Outf("{{red}} method:{{/}} %s\n", step.Method)
-
 			switch step.Method {
 			case ProgramCreate:
-				utils.Outf("{{red program create")
-				resp := Response{
-					ID: i,
-				}
-				defer resp.Print()
+				r := NewResponse(i)
 				// get program path from params
 				programPath, ok := step.Params[0].Value.(string)
 				if !ok {
-					resp.Error = fmt.Sprintf("%x: %s", ErrFailedParamTypeCast.Error(), step.Params[0].Type)
-					return nil
+					return r.Err(fmt.Errorf("%x: %s", ErrFailedParamTypeCast.Error(), step.Params[0].Type))
 				}
-				id, err := programCreateFunc(ctx, r.db, programPath)
+				id, err := programCreateFunc(ctx, c.db, programPath)
 				if err != nil {
-					resp.Error = err.Error()
-					return nil
+					return r.Err(err)
 				}
 				// create a mapping from the step id to the program id for use
 				// during inline program executions.
-				r.programMap[fmt.Sprintf("step_%d", i)] = id
-				resp.Result = Result{
+				c.programMap[fmt.Sprintf("step_%d", i)] = id
+				r.Result = Result{
 					ID: id.String(),
 				}
-				resp.Print()
+				r.Print()
 			default:
-				utils.Outf("{{red}} program call default{{/}} %s\n", step.Method)
-				resp := Response{
-					ID: i,
-				}
-				defer resp.Print()
+				r := NewResponse(i)
 				if len(step.Params) < 2 {
-					resp.Error = fmt.Sprintf("%s: %s", ErrInvalidStep.Error(), "execute requires at least 2 params")
-					return nil
+					return r.Err(fmt.Errorf("%s: %s", ErrInvalidStep.Error(), "execute requires at least 2 params"))
 				}
 
 				// get program ID from params
 				if step.Params[0].Type != ID {
-					resp.Error = fmt.Sprintf("%s: %s", ErrInvalidParamType.Error(), step.Params[0].Type)
-					return nil
+					return r.Err(fmt.Errorf("%s: %s", ErrInvalidParamType.Error(), step.Params[0].Type))
 				}
 				idStr, ok := step.Params[0].Value.(string)
 				if !ok {
-					resp.Error = fmt.Sprintf("%s: %s", ErrFailedParamTypeCast.Error(), step.Params[0].Type)
-					return nil
+					return r.Err(fmt.Errorf("%s: %s", ErrFailedParamTypeCast.Error(), step.Params[0].Type))
 				}
-				programID, err := r.getProgramID(idStr)
+				programID, err := c.getProgramID(idStr)
 				if err != nil {
-					resp.Error = err.Error()
-					return nil
+					return r.Err(err)
 				}
 
 				// maxUnits from params
 				if step.Params[1].Type != Uint64 {
-					resp.Error = fmt.Sprintf("%s: %s", ErrInvalidParamType.Error(), step.Params[1].Type)
-					return nil
+					return r.Err(fmt.Errorf("%s: %s", ErrInvalidParamType.Error(), step.Params[1].Type))
 				}
 				maxUnits, err := intToUint64(step.Params[1].Value)
 				if err != nil {
-					resp.Error = fmt.Sprintf("failed to convert max_unit to uint64: %s", err.Error())
-					return nil
+					return r.Err(err)
 				}
 
-				id, result, err := programExecuteFunc(ctx, r.db, programID, step.Params, step.Method, maxUnits)
+				id, result, err := programExecuteFunc(ctx, c.db, programID, step.Params, step.Method, maxUnits)
 				if err != nil {
-					resp.Error = err.Error()
-					return nil
+					return r.Err(err)
 				}
 
 				if step.Method == ProgramExecute {
-					resp.Result = Result{
+					r.Result = Result{
 						ID:      id.String(),
 						Balance: result[0],
 					}
 				} else {
-					resp.Result = Result{
+					r.Result = Result{
 						Response: result,
 					}
 				}
-				resp.Print()
+				r.Print()
 			}
 
 		default:
-			return fmt.Errorf("%w: %s", ErrInvalidEndpoint, step.Endpoint)
+			return NewResponse(i).Err(fmt.Errorf("%w: %s", ErrInvalidEndpoint, step.Endpoint))
 		}
 	}
 	return nil

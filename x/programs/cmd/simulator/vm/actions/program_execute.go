@@ -26,8 +26,8 @@ import (
 var _ chain.Action = (*ProgramExecute)(nil)
 
 type ProgramExecute struct {
-	Function string               `json:"programFunction"`
-	MaxUnits uint64               `json:"maxUnits"`
+	Function string              `json:"programFunction"`
+	MaxUnits uint64              `json:"maxUnits"`
 	Params   []runtime.CallParam `json:"params"`
 }
 
@@ -88,7 +88,7 @@ func (t *ProgramExecute) Execute(
 	if err != nil {
 		return false, 1, utils.ErrBytes(err), nil, nil
 	}
-	
+
 	// TODO: allow configurable imports?
 	supported := runtime.NewSupportedImports()
 	supported.Register("state", func() runtime.Import {

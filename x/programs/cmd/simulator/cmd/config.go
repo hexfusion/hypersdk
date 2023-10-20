@@ -53,6 +53,12 @@ const (
 	ExecuteEndpoint Endpoint = "execute"
 )
 
+func NewResponse(id int) *Response {
+	return &Response{
+		ID: id,
+	}
+}
+
 type Response struct {
 	// The index of the step that generated this response.
 	ID int `json,yaml:"id"`
@@ -70,6 +76,12 @@ func (r *Response) Print() {
 
 	// print response
 	fmt.Println(string(jsonBytes))
+}
+
+func (r *Response) Err(err error) error {
+	r.Error = err.Error()
+	r.Print()
+	return nil
 }
 
 type Result struct {

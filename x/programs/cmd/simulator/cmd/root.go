@@ -38,19 +38,24 @@ type simulator struct {
 	log      logging.Logger
 	logLevel string
 
-	// vm used for the simulator
 	vm *vm.VM
-	// database used to store the vm state
 	db      *state.SimpleMutable
 	genesis *genesis.Genesis
 }
 
 func NewRootCmd() *cobra.Command {
-	s := &simulator{logLevel: "debug"}
+	s := &simulator{}
 	cmd := &cobra.Command{
 		Use:   "simulator",
 		Short: "HyperSDK program VM simulator",
 	}
+
+	cobra.EnablePrefixMatching = true
+	cmd.CompletionOptions.HiddenDefaultCmd = true
+	cmd.DisableAutoGenTag = true
+	cmd.SilenceErrors = true
+	cmd.SetHelpCommand(&cobra.Command{Hidden: true})
+	cmd.PersistentFlags().StringVar(&s.logLevel, "log-level", "info", "log level")
 
 	err := s.Init()
 	if err != nil {
@@ -65,17 +70,9 @@ func NewRootCmd() *cobra.Command {
 		newKeyCmd(s.log, s.db),
 	)
 
-	cobra.EnablePrefixMatching = true
-	cmd.CompletionOptions.HiddenDefaultCmd = true
-	cmd.DisableAutoGenTag = true
-	cmd.SilenceErrors = true
-	cmd.SetHelpCommand(&cobra.Command{Hidden: true})
-
-	cmd.PersistentFlags().StringVar(&s.logLevel, "log-level", "info", "log level")
-
+	// ensure vm and databases are properly closed on simulator exit
 	cobra.OnFinalize(func() {
 		if s.vm != nil {
-			// ensure vm and databases are properly closed
 			err := s.vm.Shutdown(cmd.Context())
 			if err != nil {
 				utils.Outf("{{red}}simulator vm closed with error:{{/}} %s\n", err)
@@ -85,6 +82,7 @@ func NewRootCmd() *cobra.Command {
 
 	return cmd
 }
+
 func (s *simulator) Init() error {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -98,6 +96,7 @@ func (s *simulator) Init() error {
 	subnetID := ids.GenerateTestID()
 	chainID := ids.GenerateTestID()
 
+	// setup logger
 	loggingConfig := logging.Config{}
 	loggingConfig.LogLevel, err = logging.ToLevel(s.logLevel)
 	if err != nil {
@@ -115,6 +114,7 @@ func (s *simulator) Init() error {
 		return nil
 	}
 
+	// setup pebble and db manager
 	pdb, _, err := pebble.New(dbPath, pebble.NewDefaultConfig())
 	if err != nil {
 		return nil
@@ -139,13 +139,15 @@ func (s *simulator) Init() error {
 		SubnetID:     subnetID,
 		ChainID:      chainID,
 		NodeID:       nodeID,
-		Log:          logging.NoLog{},
+		Log:          s.log,
 		ChainDataDir: dbPath,
 		Metrics:      metrics.NewOptionalGatherer(),
 		PublicKey:    bls.PublicFromSecretKey(sk),
 	}
 
 	toEngine := make(chan common.Message, 1)
+
+	// initialize the simulator VM
 	vm := controller.New()
 	err = vm.Initialize(
 		context.TODO(),
@@ -162,6 +164,7 @@ func (s *simulator) Init() error {
 		return err
 	}
 	s.vm = vm
+	// force the vm to be ready because it has no peers.
 	s.vm.ForceReady()
 
 	stateDB, err := s.vm.State()
